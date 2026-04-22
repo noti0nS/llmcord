@@ -11,6 +11,26 @@ Evolve the current Discord bot into a private study assistant for Direito and Pr
 - quiz/simulado,
 - monitoria de progresso.
 
+The product identity for this target state is **LexNeuro**: a disciplined Discord assistant for legal study, technical learning, and focus-oriented productivity.
+
+## Product guardrails
+
+- Keep the existing single-file bot working while the LexNeuro features are introduced incrementally.
+- Do not assume capabilities that the current runtime does not have yet.
+- Treat branding, tone, and task routing as separate concerns.
+- Prefer grounded educational assistance over broad "assistant for everything" behavior.
+- Avoid architecture decisions that fight the current config-driven, OpenAI-compatible design unless there is a clear payoff.
+
+## Reality check against the Gemini description
+
+The Gemini summary is useful for product direction, but some items need reinterpretation for this repo:
+
+- **Language/runtime**: this codebase is already Python and should stay Python for now.
+- **Framework**: the bot already uses `discord.py`; that is the correct implementation baseline.
+- **AI integration**: "OpenRouter presets" are optional operational convenience, not a core architectural requirement.
+- **Secrets management**: the current repo stores provider credentials in `config.yaml`, not `.env`. A future environment-variable migration is possible, but it is a separate task.
+- **Hosting**: Railway, Oracle Cloud, Docker, or a VPS are deployment choices, not implementation blockers.
+
 ## 0 to HERO path
 
 ### 0. Define the contract
@@ -18,14 +38,17 @@ Evolve the current Discord bot into a private study assistant for Direito and Pr
 Lock the product scope before changing behavior.
 
 **Deliverables**
+- Final product positioning for LexNeuro.
 - Final list of supported modes.
 - Output format for each mode.
 - Access rules for the private server.
 - Decision on whether the bot responds only through slash commands, mentions, or both.
+- Base system prompt that matches the LexNeuro identity and current technical limits.
 
 **Done when**
 - The bot has clear task boundaries.
 - No feature depends on a vague “generic chat” behavior.
+- The default assistant behavior is useful even before advanced modes exist.
 
 ### 1. Stabilize the current bot
 
@@ -55,6 +78,7 @@ Add explicit task modes instead of relying on one prompt.
 - Slash command or message command to pick a mode.
 - Shared request object with mode, topic, target audience, and constraints.
 - System prompts or templates per mode.
+- A safe default fallback mode for generic academic/technical assistance when no explicit mode is chosen.
 
 **Done when**
 - The bot can route the same user input into different behaviors safely.
@@ -69,6 +93,7 @@ This mode should gather sources before answering.
 - ABNT-style report structure.
 - Inline citations and bibliography.
 - Clear distinction between factual claims and interpretation.
+- Clear output behavior when search is unavailable, disabled, or incomplete.
 
 **Done when**
 - The bot can produce a research report with traceable sources.
@@ -95,6 +120,7 @@ Turn topics, deadlines, and availability into a realistic plan.
 - Time allocation per topic.
 - Review slots and practice slots.
 - Adjustments for limited time or heavy content.
+- Optional focus-oriented output templates such as Pomodoro blocks, weekly checkpoints, or "pauta" summaries.
 
 **Done when**
 - The bot can output a plan that fits the available calendar.
@@ -134,6 +160,7 @@ Track learning progress for users and for the group.
 - Weak-topic detection.
 - Progress summaries.
 - Group-level study reports.
+- Clear privacy rules for per-user versus group-visible progress data.
 
 **Done when**
 - The server can see what is being studied, finished, and missed.
@@ -164,6 +191,8 @@ Make the bot safe and stable for daily use.
 - Clear error handling.
 - Logging for failures and task flow.
 - Config documentation for the new modes.
+- Configuration guidance for secure secret handling, whether that remains `config.yaml` or later moves to environment variables.
+- Final review of the base system prompt and per-mode prompts to avoid overlap or contradictory instructions.
 
 **Done when**
 - The bot is reliable enough for regular study use.
@@ -171,20 +200,22 @@ Make the bot safe and stable for daily use.
 ## Recommended build order
 
 1. Keep the existing bot stable.
-2. Add task routing.
-3. Build research mode.
-4. Build code mode.
-5. Build study-plan mode.
-6. Add ABNT helper.
-7. Add quiz/simulado.
-8. Add monitoria.
-9. Add server knowledge features.
-10. Add configurable DM delivery.
-11. Harden and document everything.
+2. Define the LexNeuro base prompt and behavioral contract.
+3. Add task routing.
+4. Build research mode.
+5. Build code mode.
+6. Build study-plan mode.
+7. Add ABNT helper.
+8. Add quiz/simulado.
+9. Add monitoria.
+10. Add server knowledge features.
+11. Add configurable DM delivery.
+12. Harden and document everything.
 
 ## Non-goals for the first pass
 
 - Full fine-tuning before prompt and workflow validation.
 - A complex multi-service architecture too early.
 - Rewriting the whole bot before the feature set is validated.
+- Building mascot-heavy or aesthetic features before the assistant behavior is correct.
 

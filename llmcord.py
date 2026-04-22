@@ -37,6 +37,13 @@ def get_config(filename: str = "config.yaml") -> dict[str, Any]:
 config = get_config()
 curr_model = next(iter(config["models"]))
 
+
+def get_bot_token() -> str:
+    bot_token = (config.get("bot_token") or "").strip()
+    if not bot_token:
+        raise RuntimeError("config.yaml is missing Discord bot_token.")
+    return bot_token
+
 msg_nodes = {}
 last_task_time = 0
 
@@ -328,7 +335,16 @@ async def on_message(new_msg: discord.Message) -> None:
 
 
 async def main() -> None:
-    await discord_bot.start(config["bot_token"])
+    try:
+        await discord_bot.start(get_bot_token())
+    except discord.LoginFailure as exc:
+        logging.error(
+            "Discord rejected the bot token. Check config.yaml bot_token (it must be the bot token, not the client secret) "
+            "and regenerate it if needed."
+        )
+        raise RuntimeError("Discord bot login failed.") from exc
+    finally:
+        await discord_bot.close()
 
 
 try:
