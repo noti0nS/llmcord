@@ -6,6 +6,10 @@
 
 !*.md
 !*.py
+!src/
+!src/**/*.py
+!tests/
+!tests/**/*.py
 
 !Dockerfile
 !config-example.yaml

@@ -6,22 +6,31 @@
 | ----------------------- | ---------------------------------------------- |
 | Install dependencies    | `python -m pip install -U -r requirements.txt` |
 | Run bot locally         | `python llmcord.py`                            |
+| Run tests               | `pytest`                                       |
 | Run with Docker Compose | `docker compose up`                            |
 | Build Docker image      | `docker build -t llmcord .`                    |
 
-There is currently no repository test suite or linter configuration, so there is no single-test command to run.
-
 ## High-level architecture
 
-- The project is intentionally a **single-file async bot** (`llmcord.py`) with runtime behavior driven by `config.yaml` (template: `config-example.yaml`).
-- Incoming Discord messages are processed in `on_message`, which:
+- The project is a **modular async bot** organized under `src/` with runtime behavior driven by `config.yaml` (template: `config-example.yaml`).
+- Incoming Discord messages are processed in `src/bot.py:on_message()`, which:
   1. Applies DM/mention gating and permission checks (`users`, `roles`, `channels`, plus `admin_ids` override).
   2. Reconstructs conversation context by walking reply links, thread starter messages, and adjacent same-author history.
   3. Normalizes message content (text, embeds, text attachments, optional images) into OpenAI-compatible chat payloads.
-  4. Calls an OpenAI-compatible endpoint via `AsyncOpenAI` using provider config + model parameters from YAML.
-  5. Streams assistant output back to Discord (embed streaming by default, plain text mode when configured).
+  4. Calls an OpenAI-compatible endpoint via `AsyncOpenAI` (configured in `src/config.py:get_openai_config()`) using provider config + model parameters from YAML.
+  5. Streams assistant output back to Discord via `src/llm.py:stream_completion_to_channel()` (embed streaming by default, plain text mode when configured).
 - Message state is cached in a global `msg_nodes` dictionary keyed by Discord message ID, with per-node `asyncio.Lock` to avoid race conditions and duplicate fetch work.
 - Config is hot-reloaded during runtime (notably in `on_message` and `/model` autocomplete), so edits to `config.yaml` take effect without restarting.
+
+## Module organization
+
+- `src/main.py`: process entrypoint (`asyncio.run(...)`, load config, instantiate bot).
+- `src/config.py`: `get_config()`, `get_bot_token()`, `get_openai_config()`.
+- `src/prompts.py`: ABNT prompt constants and `build_abnt_messages()`.
+- `src/llm.py`: `stream_completion_to_channel()`, `get_provider_error_detail()`.
+- `src/bot.py`: `MsgNode`, `create_discord_bot()` factory, all event handlers and slash commands.
+- `llmcord.py`: thin compatibility wrapper that calls `src.main.run()`.
+- `tests/`: pytest unit tests for pure logic in `prompts`, `config`, and bot utilities.
 
 ## Key repository conventions
 

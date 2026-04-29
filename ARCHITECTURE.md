@@ -8,7 +8,7 @@ The target architecture should keep the same lightweight deployment style, but s
 
 ## Code navigation map
 
-Use this diagram as the fastest way to find runtime behavior in the current codebase. Everything below currently lives in `llmcord.py`.
+Use this diagram as the fastest way to find runtime behavior in the current codebase. The implementation is now modular under `src/`.
 
 ```mermaid
 graph TD
@@ -35,13 +35,17 @@ graph TD
 
 ## File guide
 
-- `llmcord.py:32-34` loads YAML with `get_config()`.
-- `llmcord.py:37-48` initializes global runtime state such as `config`, `curr_model`, `msg_nodes`, the Discord bot, and the shared `httpx` client.
-- `llmcord.py:51-63` defines `MsgNode`, the cache structure used during conversation reconstruction.
-- `llmcord.py:66-93` contains the `/model` slash command and autocomplete logic.
-- `llmcord.py:96-101` contains `on_ready()`, which logs the invite URL and syncs commands.
-- `llmcord.py:104-327` contains `on_message()`, which is the core pipeline for permissions, context rebuilding, attachment parsing, model calls, streaming replies, and cache eviction.
-- `llmcord.py:330-337` contains `main()` and process startup.
+- `src/main.py:13-29` defines the async entrypoint.
+- `src/config.py:6-9` loads YAML with `get_config()`.
+- `src/config.py:12-16` extracts Discord bot token.
+- `src/config.py:19-40` handles OpenAI client instantiation and request config merging.
+- `src/prompts.py:3-29` defines ABNT system/user/part prompts and `build_abnt_messages()`.
+- `src/llm.py:8-55` streams LLM responses to Discord and formats provider errors.
+- `src/bot.py:25-27` defines `MsgNode`, the cache structure for conversation reconstruction.
+- `src/bot.py:67-113` defines `user_has_permission()` and attachment/document parsing helpers.
+- `src/bot.py:219-985` contains `create_discord_bot()` factory which registers all event handlers and slash commands.
+- `llmcord.py:1-5` is the thin wrapper that calls `src.main.run()`.
+- `tests/` contains pytest unit tests for prompts, config, and bot utility functions.
 
 ## Current architecture
 
@@ -49,36 +53,36 @@ graph TD
 
 ```mermaid
 graph TD
-    A[Discord message] --> B[Permission check]
-    B --> C[Conversation rebuild]
-    C --> D[Model and provider selection]
-    D --> E[OpenAI-compatible request]
-    E --> F[Streamed response to Discord]
+    A["Process start<br/>src/main.py"] --> B["Load config<br/>src/config.py"]
+    B --> C["Create bot factory<br/>src/bot.py:create_discord_bot()"]
+    C --> D["Connect to Discord<br/>src/main.py"]
+    D --> E[Discord message]
+    E --> F["Permission check<br/>src/bot.py:user_has_permission()"]
+    F --> G["Conversation rebuild<br/>src/bot.py:on_message()"]
+    G --> H["Model and provider selection<br/>src/config.py:get_openai_config()"]
+    H --> I["OpenAI-compatible request<br/>src/llm.py"]
+    I --> J["Streamed response<br/>src/llm.py:stream_completion_to_channel()"]
 ```
 
 ### Current building blocks
 
-- **Discord layer**: `discord.py` handles events, slash commands, and replies.
-- **Config layer**: `config.yaml` drives models, providers, permissions, and behavior.
-- **Context layer**: message history is reconstructed from replies, threads, and nearby messages.
-- **LLM layer**: `AsyncOpenAI` talks to any OpenAI-compatible provider.
-- **Attachment layer**: text and image attachments are fetched with `httpx`.
-- **Cache layer**: `msg_nodes` stores message state in memory.
+- **Entry point**: `src/main.py` handles startup and async runtime.
+- **Config layer**: `src/config.py` loads and manages YAML configuration.
+- **Discord layer**: `src/bot.py` handles events, slash commands, and replies via `create_discord_bot()` factory.
+- **Prompts layer**: `src/prompts.py` contains ABNT-specific prompt construction.
+- **LLM layer**: `src/llm.py` abstracts streaming responses and provider error handling.
+- **Context layer**: message history is reconstructed in `src/bot.py:on_message()` from replies, threads, and nearby messages.
+- **Attachment layer**: text and image attachments are fetched with `httpx` (in `src/bot.py`).
+- **Cache layer**: `msg_nodes` stores message state in memory (managed in `src/bot.py`).
+- **Tests**: `tests/` contains pytest unit tests for pure logic.
 
 ### Current strengths
 
-- Simple deployment.
+- Simple modular structure without over-engineering.
 - Easy provider swapping.
 - Hot-reloadable config.
+- Testable pure functions extracted.
 - Good foundation for a private server.
-
-### Current limitations
-
-- One file contains most behavior.
-- No explicit task routing.
-- No persistent knowledge base.
-- No search/retrieval pipeline.
-- No structured support for study data.
 
 ## Target architecture
 
@@ -240,15 +244,21 @@ User activity + study events
 
 ## Recommended module boundaries
 
-If the project is later split into files, this is the cleanest shape:
+The current modular structure is:
 
-- `bot.py` for startup and Discord bootstrap.
-- `config.py` for config loading and validation.
-- `router.py` for mode selection.
-- `handlers/` for each feature area.
-- `services/` for shared utilities.
-- `storage/` for persistence.
-- `formatters/` for Discord output and citations.
+- `src/main.py`: process entry and async bootstrap.
+- `src/config.py`: configuration and provider setup.
+- `src/prompts.py`: prompt templates and builders.
+- `src/llm.py`: LLM communication and streaming.
+- `src/bot.py`: Discord events, commands, and bot factory.
+- `tests/`: pytest unit tests.
+
+For future expansion beyond these modules:
+
+- `handlers/` for feature-specific handlers (research, code, ABNT, quiz, etc.).
+- `services/` for shared utilities (search, citations, progress tracking).
+- `storage/` for persistence (study plans, progress, references).
+- `formatters/` for Discord output rendering and citation formatting.
 
 ## Operational principles
 

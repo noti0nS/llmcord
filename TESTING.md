@@ -236,7 +236,28 @@ Expected result:
 
 If the model does not support vision or the model key is not marked as vision-capable, the bot should warn that it cannot see images.
 
-### 3.13 Streaming response behavior
+### 3.13 `/abnt` helper
+
+1. Create a small `.docx` or `.odt` file with academic text and at least one rough reference.
+2. Run `/abnt` and attach the file.
+3. Optionally fill the `instructions` field with a constraint such as `manter seções curtas`.
+
+Expected result:
+
+- The bot accepts the supported Word attachment
+- In a server channel, the bot creates a dedicated thread for the ABNT output
+- The bot streams the ABNT-oriented revised version as chunked messages
+- Larger documents may be processed as sequential numbered parts
+- Missing reference fields are marked instead of invented
+- Long output is split across multiple thread messages if needed
+
+4. Run `/abnt` with a PDF, DOC, TXT, or MD file.
+
+Expected result:
+
+- The bot rejects the unsupported file type with an explanatory message
+
+### 3.14 Streaming response behavior
 
 1. Send a prompt that produces a medium or long response.
 
@@ -246,7 +267,7 @@ Expected result:
 - The embed turns green when the response is complete
 - Long replies are split into multiple messages if needed
 
-### 3.14 Plain-text response mode
+### 3.15 Plain-text response mode
 
 1. Set `use_plain_responses: true`.
 2. Restart the bot or reload config.
@@ -259,7 +280,7 @@ Expected result:
 - Warning messages are disabled
 - Long responses split across multiple messages when needed
 
-### 3.15 System prompt formatting
+### 3.16 System prompt formatting
 
 1. Set `system_prompt` to include `{date}` and `{time}`.
 2. Send a message to the bot.
@@ -269,7 +290,7 @@ Expected result:
 - The placeholders are replaced with the current date and time
 - The bot behavior reflects the configured system prompt
 
-### 3.16 Config hot reload
+### 3.17 Config hot reload
 
 1. Edit `config.yaml` while the container is running.
 2. Change a visible value such as:
@@ -292,7 +313,7 @@ Note:
 - `/model` autocomplete reloads config when the input is empty
 - Some changes may still require a restart to be visible in Discord client state or container startup state
 
-### 3.17 Cache behavior
+### 3.18 Cache behavior
 
 1. Send enough messages to grow the conversation cache.
 2. Continue sending new messages until the cache limit is exceeded.
@@ -303,7 +324,7 @@ Expected result:
 - Older message nodes are evicted first
 - There are no obvious memory growth issues during the test run
 
-### 3.18 Error handling
+### 3.19 Error handling
 
 1. Temporarily point the provider to an invalid `base_url`.
 2. Send a message that would trigger a response.
@@ -325,10 +346,11 @@ If you want the shortest useful test pass, do this order:
 5. Test a simple reply chain
 6. Test a text attachment
 7. Test a vision attachment, if you configured one
-8. Test DMs
-9. Test permissions
-10. Test plain-text mode
-11. Test config hot reload
+8. Test `/abnt` with a `.docx` or `.odt` document
+9. Test DMs
+10. Test permissions
+11. Test plain-text mode
+12. Test config hot reload
 
 ## 5. Troubleshooting
 
@@ -354,6 +376,7 @@ This file is aligned with the current runtime behavior in `llmcord.py`:
 - Same-author message chaining
 - Thread starter handling
 - Text attachments
+- `/abnt` helper for supported `.docx` and `.odt` documents
 - Image attachments
 - Streaming responses
 - Plain-text responses

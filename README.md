@@ -49,6 +49,14 @@ Or run local models with:
 
 ---
 
+### ABNT helper with `/abnt`:
+Attach a word-processor document and the bot will generate an ABNT-oriented academic version using the active model. The command accepts optional extra instructions for the formatting pass.
+
+Supported attachments are `.docx` and `.odt` files. Legacy `.doc`, PDFs, and plain text files are rejected in this first pass.
+In server channels, long ABNT output is streamed into a dedicated Discord thread created from the command response.
+
+---
+
 ### And more:
 - Supports image attachments when using a vision model (like gpt-5, grok-4, claude-4, etc.)
 - Supports text file attachments (.txt, .py, .c, etc.)
@@ -59,7 +67,7 @@ Or run local models with:
 - Displays helpful warnings when appropriate (like "⚠️ Only using last 25 messages" when the customizable message limit is exceeded)
 - Caches message data in a size-managed (no memory leaks) and mutex-protected (no race conditions) global dictionary to maximize efficiency and minimize Discord API calls
 - Fully asynchronous
-- 1 Python file, ~300 lines of code
+- Modular Python codebase under `src/`
 
 ## Instructions
 
@@ -83,6 +91,8 @@ Or run local models with:
 | **max_messages** | The maximum number of messages allowed in a reply chain. When exceeded, the oldest messages are dropped.<br /><br />Default: `25` |
 | **use_plain_responses** | When set to `true` the bot will use plaintext responses instead of embeds. Plaintext responses have a shorter character limit so the bot's messages may split more often.<br /><br />Default: `false`<br /><br />**Also disables streamed responses and warning messages.** |
 | **allow_dms** | Set to `false` to disable direct message access.<br /><br />Default: `true` |
+| **abnt.max_document_chars** | Maximum number of extracted characters from an attached `/abnt` `.docx` or `.odt` document sent to the model.<br /><br />Default: `100,000` |
+| **abnt.max_chunk_chars** | Maximum characters per streamed `/abnt` model request. Lower this if the provider times out on long rewrites.<br /><br />Default: `6,000` |
 | **permissions** | Configure access permissions for `users`, `roles` and `channels`, each with a list of `allowed_ids` and `blocked_ids`.<br /><br />Control which `users` are admins with `admin_ids`. Admins can change the model with `/model` and DM the bot even if `allow_dms` is `false`.<br /><br />**Leave `allowed_ids` empty to allow ALL in that category.**<br /><br />**Role and channel permissions do not affect DMs.**<br /><br />**You can use [category](https://support.discord.com/hc/en-us/articles/115001580171-Channel-Categories-101) IDs to control channel permissions in groups.** |
 
 ### LLM settings:
@@ -99,6 +109,11 @@ Or run local models with:
    ```bash
    python -m pip install -U -r requirements.txt
    python llmcord.py
+   ```
+
+4. Run tests:
+   ```bash
+   pytest
    ```
 
    **With Docker:**

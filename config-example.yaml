@@ -11,6 +11,10 @@ max_messages: 25
 use_plain_responses: false
 allow_dms: true
 
+abnt:
+  max_document_chars: 100000
+  max_chunk_chars: 6000
+
 permissions:
   users:
     admin_ids: []
