@@ -1,3 +1,10 @@
 from .abnt import ABNT_SYSTEM_PROMPT, build_abnt_messages, load_abnt_reference
+from .discord_markdown import build_system_prompt, load_discord_markdown_reference
 
-__all__ = ["ABNT_SYSTEM_PROMPT", "build_abnt_messages", "load_abnt_reference"]
+__all__ = [
+    "ABNT_SYSTEM_PROMPT",
+    "build_abnt_messages",
+    "build_system_prompt",
+    "load_abnt_reference",
+    "load_discord_markdown_reference",
+]

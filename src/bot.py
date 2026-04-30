@@ -22,7 +22,7 @@ from .config import (
     get_openai_config,
 )
 from .llm import get_provider_error_detail
-from .prompts import build_abnt_messages
+from .prompts import build_abnt_messages, build_system_prompt
 
 VISION_MODEL_TAGS = (
     "claude",
@@ -759,14 +759,11 @@ def create_discord_bot(initial_config: Optional[dict[str, Any]] = None) -> comma
             new_msg.content,
         )
 
-        if system_prompt := config.get("system_prompt"):
-            now = datetime.now().astimezone()
-            system_prompt = (
-                system_prompt.replace("{date}", now.strftime("%B %d %Y"))
-                .replace("{time}", now.strftime("%H:%M:%S %Z%z"))
-                .strip()
-            )
-            messages.append(dict(role="system", content=system_prompt))
+        now = datetime.now().astimezone()
+        system_prompt = (config.get("system_prompt") or "").replace(
+            "{date}", now.strftime("%B %d %Y")
+        ).replace("{time}", now.strftime("%H:%M:%S %Z%z"))
+        messages.append(dict(role="system", content=build_system_prompt(system_prompt)))
 
         curr_content = finish_reason = None
         response_msgs = []

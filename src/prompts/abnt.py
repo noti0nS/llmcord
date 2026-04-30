@@ -1,6 +1,8 @@
 from pathlib import Path
 from typing import Optional
 
+from .discord_markdown import build_system_prompt
+
 ABNT_REFERENCE_PATH = Path(__file__).with_name("abnt_reference.md")
 
 ABNT_SYSTEM_PROMPT = """\
@@ -51,6 +53,7 @@ def build_abnt_messages(
         "Use as diretrizes abaixo como fonte de verdade para a avaliação:\n\n"
         f"{reference}"
     )
+    system_prompt = build_system_prompt(system_prompt)
     user_prompt = ABNT_USER_PROMPT
 
     if instructions:
