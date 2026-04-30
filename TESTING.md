@@ -245,11 +245,11 @@ If the model does not support vision or the model key is not marked as vision-ca
 Expected result:
 
 - The bot accepts the supported Word attachment
-- In a server channel, the bot creates a dedicated thread for the ABNT output
-- The bot streams the ABNT-oriented revised version as chunked messages
-- Larger documents may be processed as sequential numbered parts
-- Missing reference fields are marked instead of invented
-- Long output is split across multiple thread messages if needed
+- The model returns ABNT evaluation data as JSON (`score` + `improvements`)
+- The bot sends a deterministic summary message in the same channel
+- If score is `>= 0.9`, the bot says the document is good enough
+- If score is `>= 0.7` and `< 0.9`, the bot lists improvements to raise the score
+- If score is `< 0.7`, the bot sends a stricter warning and the same improvement list
 
 4. Run `/abnt` with a PDF, DOC, TXT, or MD file.
 

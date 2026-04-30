@@ -1,10 +1,11 @@
 import asyncio
+import json
 import logging
 
 import discord
 
 from .bot import create_discord_bot
-from .config import get_bot_token, get_config
+from .config import get_bot_token, get_config, mask_sensitive_config
 
 logging.basicConfig(
     level=logging.INFO,
@@ -14,6 +15,10 @@ logging.basicConfig(
 
 async def main() -> None:
     config = get_config()
+    logging.info(
+        "Loaded config:\n%s",
+        json.dumps(mask_sensitive_config(config), indent=2, sort_keys=True, ensure_ascii=False),
+    )
     discord_bot = create_discord_bot(config)
 
     try:

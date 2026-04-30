@@ -1,4 +1,4 @@
-from src.config import get_bot_token, get_openai_config
+from src.config import get_bot_token, get_openai_config, mask_sensitive_config
 
 
 def test_get_bot_token_raises_when_missing() -> None:
@@ -30,4 +30,25 @@ def test_get_openai_config_merges_provider_and_model_extra_body() -> None:
     assert openai_config["extra_headers"] == {"x-test": "1"}
     assert openai_config["extra_query"] == {"q": "v"}
     assert openai_config["extra_body"] == {"temperature": 0.2, "max_tokens": 100}
+
+
+def test_mask_sensitive_config_redacts_private_values() -> None:
+    config = {
+        "bot_token": "discord-token",
+        "providers": {
+            "openai": {
+                "base_url": "https://api.example.com/v1",
+                "api_key": "secret-key",
+                "extra_headers": {"Authorization": "Bearer secret"},
+            }
+        },
+        "nested": [{"refresh_token": "refresh"}],
+    }
+
+    masked = mask_sensitive_config(config)
+
+    assert masked["bot_token"] == "***REDACTED***"
+    assert masked["providers"]["openai"]["api_key"] == "***REDACTED***"
+    assert masked["providers"]["openai"]["extra_headers"]["Authorization"] == "***REDACTED***"
+    assert masked["nested"][0]["refresh_token"] == "***REDACTED***"
 

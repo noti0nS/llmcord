@@ -26,7 +26,7 @@
 
 - `src/main.py`: process entrypoint (`asyncio.run(...)`, load config, instantiate bot).
 - `src/config.py`: `get_config()`, `get_bot_token()`, `get_openai_config()`.
-- `src/prompts.py`: ABNT prompt constants and `build_abnt_messages()`.
+- `src/prompts/abnt.py`: ABNT prompt constants, markdown reference loading, and `build_abnt_messages()`.
 - `src/llm.py`: `stream_completion_to_channel()`, `get_provider_error_detail()`.
 - `src/bot.py`: `MsgNode`, `create_discord_bot()` factory, all event handlers and slash commands.
 - `llmcord.py`: thin compatibility wrapper that calls `src.main.run()`.
@@ -41,3 +41,4 @@
 - **User identity convention in prompts:** user messages sent to the LLM are prefixed as `<@DISCORD_ID>: ...`; keep this format when changing prompt construction.
 - **Response mode behavior split:** `use_plain_responses: true` disables embed streaming/warnings and uses plain text chunks instead.
 - **Cache bound convention:** `MAX_MESSAGE_NODES` limits cached conversation nodes and eviction removes oldest message IDs first.
+- **Localization convention:** all bot user-facing responses must be in PT-BR.

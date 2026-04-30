@@ -7,7 +7,9 @@
 !*.md
 !*.py
 !src/
+!src/**/
 !src/**/*.py
+!src/**/*.md
 !tests/
 !tests/**/*.py
 

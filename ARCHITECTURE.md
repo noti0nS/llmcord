@@ -39,7 +39,7 @@ graph TD
 - `src/config.py:6-9` loads YAML with `get_config()`.
 - `src/config.py:12-16` extracts Discord bot token.
 - `src/config.py:19-40` handles OpenAI client instantiation and request config merging.
-- `src/prompts.py:3-29` defines ABNT system/user/part prompts and `build_abnt_messages()`.
+- `src/prompts/abnt.py` defines ABNT prompts, loads `abnt_reference.md`, and builds `build_abnt_messages()`.
 - `src/llm.py:8-55` streams LLM responses to Discord and formats provider errors.
 - `src/bot.py:25-27` defines `MsgNode`, the cache structure for conversation reconstruction.
 - `src/bot.py:67-113` defines `user_has_permission()` and attachment/document parsing helpers.
@@ -69,7 +69,7 @@ graph TD
 - **Entry point**: `src/main.py` handles startup and async runtime.
 - **Config layer**: `src/config.py` loads and manages YAML configuration.
 - **Discord layer**: `src/bot.py` handles events, slash commands, and replies via `create_discord_bot()` factory.
-- **Prompts layer**: `src/prompts.py` contains ABNT-specific prompt construction.
+- **Prompts layer**: `src/prompts/abnt.py` contains ABNT-specific prompt construction and ABNT markdown reference loading.
 - **LLM layer**: `src/llm.py` abstracts streaming responses and provider error handling.
 - **Context layer**: message history is reconstructed in `src/bot.py:on_message()` from replies, threads, and nearby messages.
 - **Attachment layer**: text and image attachments are fetched with `httpx` (in `src/bot.py`).
@@ -248,7 +248,7 @@ The current modular structure is:
 
 - `src/main.py`: process entry and async bootstrap.
 - `src/config.py`: configuration and provider setup.
-- `src/prompts.py`: prompt templates and builders.
+- `src/prompts/abnt.py`: prompt templates/builders and ABNT reference loading.
 - `src/llm.py`: LLM communication and streaming.
 - `src/bot.py`: Discord events, commands, and bot factory.
 - `tests/`: pytest unit tests.
