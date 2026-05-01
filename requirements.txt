@@ -1,8 +1,0 @@
-discord.py>=2.6.0
-httpx
-openai
-pyyaml
-pytest
-duckduckgo-search>=7.0.0
-python-docx>=1.1.0
-odfpy>=1.4.0

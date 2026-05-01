@@ -1,55 +1,63 @@
-# Agent Instructions for `llmcord`
+# AGENTS.md
 
-## Build, run, and verification commands
+## Quick commands
 
-| Task | Command |
-|------|---------|
-| Install dependencies | `venv\Scripts\python -m pip install -U -r requirements.txt` |
-| Run bot locally | `venv\Scripts\python llmcord.py` |
-| Run tests | `venv\Scripts\pytest` |
-| Run with Docker Compose | `docker compose up` |
-| Build Docker image | `docker build -t llmcord .` |
+```bash
+uv run pytest                          # run all tests
+uv run pytest tests/test_bot_utils.py  # run one file
+uv run basedpyright src tests          # typecheck
+uv run ruff check .                    # lint
+uv run ruff format --check .           # check formatting
+uv run python llmcord.py               # run the bot
+```
 
-No lint, typecheck, or CI config exists. Tests are plain pytest.
+## Architecture
 
-## High-level architecture
+- `llmcord.py` → `src/main.py:run()` → `src/bot.py:create_discord_bot()` — this is the bot lifecycle.
+- `main.py` in the repo root is a dead stub, not the entrypoint.
+- `src/bot.py` owns the `on_message` handler, `MsgNode` cache, reply chains, LLM streaming, and response splitting. All slash commands are registered from there.
 
-- Modular async Discord bot under `src/`, driven by `config.yaml` (copy from `config-example.yaml`).
-- Entry point: `llmcord.py` → `src/main.py:run()` → `asyncio.run(main())`.
-- `src/bot.py:create_discord_bot()` registers all event handlers and slash commands inside a factory closure.
-- Incoming messages are processed in `on_message()`:
-  1. Gating: DM/mention checks, then `user_has_permission()` (users/roles/channels, `admin_ids` override).
-  2. Conversation rebuild: walks reply links, thread starter messages, and adjacent same-author history using the global `msg_nodes` cache.
-  3. Content normalization: text, embeds, text-display components, text attachments, and optional images.
-  4. LLM call via `AsyncOpenAI` using `src/config.py:get_openai_config()` + `build_openai_chat_completion_kwargs()`.
-  5. Response streaming is handled **inline in `on_message()`**; `src/llm.py:stream_completion_to_channel()` is an unused helper.
-- Config is hot-reloaded at the start of `on_message()` and in `/model` autocomplete when `curr_str == ""`.
-- Message state is cached in a global `msg_nodes: dict[int, MsgNode]` with per-node `asyncio.Lock`.
+## Package layout
 
-## Runtime file dependencies
+| Directory | Purpose |
+|---|---|
+| `src/bot.py` | Core bot: message routing, reply chains, LLM streaming |
+| `src/config.py` | YAML config loading, OpenAI client factory, config masking |
+| `src/commands/` | Slash commands: `/model`, `/abnt`, `/research` |
+| `src/prompts/` | System prompts + markdown reference files loaded at runtime |
+| `src/helpers/` | Async heartbeat, content parsing, DOCX/ODT I/O, web search |
+| `src/llm.py` | Generic streaming helper used by commands |
 
-- `config.yaml` is required at runtime.
-- `src/prompts/abnt_reference.md` and `src/prompts/discord_markdown_ref.md` are loaded at runtime; missing files crash the bot.
+## Key invariants
 
-## Key repository conventions
+- **Config is hot-reloaded** on every message/command via `asyncio.to_thread(get_config)`. Never cache config values across requests.
+- **Provider/model format**: `provider/model` string, e.g. `openai/gpt-5`. Split on `/` in `get_openai_config()`. Vision models detected by checking if the model name string contains any of `VISION_MODEL_TAGS`.
+- **`config.yaml` is gitignored** — never commit real config. Template is `config-example.yaml`.
+- **`requirements.txt` does not exist** (README mentions it but it's stale/missing). Use `uv` with `pyproject.toml`.
 
-- **Model key format:** `<provider>/<model>` in `config.yaml`; optional `:vision` suffix is stripped before API calls and does not enable vision support.
-- **Vision heuristic:** image acceptance is determined by `VISION_MODEL_TAGS` substring matching against the model key in `bot.py` (e.g., `gpt-5`, `claude`, `grok-4`, `llama`).
-- **Default model:** startup model is the first key in `config["models"]` (`curr_model = next(iter(config["models"]))`), so YAML order matters.
-- **Parameter merging:** request `extra_body` is merged from provider-level `extra_body` and per-model parameters (`|` merge).
-- **System prompt:** `build_system_prompt()` always appends the Discord markdown reference to whatever is configured in `system_prompt`.
-- **User message prefix:** user messages sent to the LLM are prefixed as `<@DISCORD_ID>: ...`; preserve this format.
-- **Response modes:** `use_plain_responses: true` disables embed streaming, warning messages, and uses `LayoutView` + `TextDisplay` instead.
-- **ABNT command:** uses non-streaming completion (`stream=False`) and expects a structured JSON response (`score` + `improvements`).
-- **Cache eviction:** `MAX_MESSAGE_NODES` bounds `msg_nodes`; eviction removes oldest message IDs first.
-- **Localization:** all bot user-facing responses must be in PT-BR.
+## Dev environment
 
-## Module map
+- **Python 3.13+** required (`.python-version`).
+- Package manager: `uv` (`uv.lock` committed, `pyproject.toml` has dependencies).
+- **All commands go through `uv run`**, e.g. `uv run pytest`, `uv run python ...`. Never use a bare host `python` — it may not exist or be the wrong version. `uv` manages the isolated `.venv/`.
+- Type checker: **basedpyright** (`pyrightconfig.json`).
+- Linter/formatter: **ruff**.
 
-- `src/main.py`: async entrypoint, bot startup, login failure handling.
-- `src/config.py`: YAML loading, sensitive value masking, OpenAI client/request config building.
-- `src/bot.py`: `MsgNode`, permission logic, document parsers (`docx`/`odt`), `create_discord_bot()` factory with all handlers.
-- `src/llm.py`: `get_provider_error_detail()` (used); `stream_completion_to_channel()` (unused helper).
-- `src/prompts/abnt.py`: ABNT prompt constants, reference loading, `build_abnt_messages()`.
-- `src/prompts/discord_markdown.py`: Discord markdown reference loading and system prompt building.
-- `tests/`: pytest unit tests for pure logic (prompts, config, bot utilities).
+## Testing conventions
+
+- Tests use **dataclass-based fakes** with `cast()` to satisfy the type checker — not `unittest.mock`.
+- Example pattern: `_User`, `_Channel`, `_Attachment` dataclasses that stand in for discord types.
+- `test_bot_utils.py` covers bot logic, permissions, message routing, attachment validation.
+- `test_config.py` covers config masking and OpenAI config merging.
+- `test_prompts.py` covers system prompt assembly.
+
+## Docker
+
+- `docker compose up` reads `config.yaml` as a read-only bind mount (`:ro`).
+- Dockerfile installs from `requirements.txt` — this file must be generated from `uv` if using Docker.
+
+## Slash commands
+
+- `/model <name>` — switch LLM model (admin only per `permissions.users.admin_ids`). Autocomplete reloads config on empty input.
+- `/abnt <doc> [instructions]` — evaluate `.docx`/`.odt` for ABNT compliance. Returns structured JSON then reformats into a user message.
+- `/research` — web search + LLM document generation. Uses DuckDuckGo. Supports depth/audience/format options.
