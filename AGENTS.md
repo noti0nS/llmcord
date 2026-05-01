@@ -4,9 +4,9 @@
 
 | Task | Command |
 |------|---------|
-| Install dependencies | `python -m pip install -U -r requirements.txt` |
-| Run bot locally | `python llmcord.py` |
-| Run tests | `pytest` |
+| Install dependencies | `venv\Scripts\python -m pip install -U -r requirements.txt` |
+| Run bot locally | `venv\Scripts\python llmcord.py` |
+| Run tests | `venv\Scripts\pytest` |
 | Run with Docker Compose | `docker compose up` |
 | Build Docker image | `docker build -t llmcord .` |
 
