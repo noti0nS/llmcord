@@ -1,5 +1,4 @@
 from io import BytesIO
-from typing import Any
 from xml.etree import ElementTree
 from zipfile import BadZipFile, ZipFile
 
@@ -10,6 +9,23 @@ from ..constants import (
     SUPPORTED_WORD_ATTACHMENT_EXTENSIONS,
     SUPPORTED_WORD_CONTENT_TYPES,
 )
+
+try:
+    from docx import Document
+    from docx.enum.text import WD_ALIGN_PARAGRAPH
+    from docx.shared import Inches, Pt
+except ImportError:
+    Document = None
+    Pt = Inches = WD_ALIGN_PARAGRAPH = None
+
+try:
+    from odf import opendocument
+    from odf.style import ParagraphProperties, Style, TextProperties
+    from odf.text import P
+except ImportError:  # pragma: no cover
+    opendocument = None
+    Style = ParagraphProperties = TextProperties = None
+    P = None
 
 
 def attachment_is_supported_word_document(attachment: discord.Attachment) -> bool:
@@ -85,3 +101,89 @@ async def read_word_attachment(
         text = extract_docx_text(response.content)
 
     return text[:max_chars], len(text) > max_chars
+
+
+def generate_docx_document(content: str, title: str) -> bytes:
+    """Generate a DOCX file from plain text content."""
+    if Document is None:
+        raise RuntimeError("python-docx is required to generate DOCX files")
+
+    doc = Document()
+
+    # Set default font
+    style = doc.styles["Normal"]
+    font = style.font
+    font.name = "Times New Roman"
+    font.size = Pt(12)
+
+    # Add title
+    title_para = doc.add_paragraph()
+    title_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    title_run = title_para.add_run(title)
+    title_run.bold = True
+    title_run.font.size = Pt(14)
+
+    # Add content paragraphs
+    for line in content.split("\n"):
+        if line.strip():
+            doc.add_paragraph(line.strip())
+        else:
+            # Add empty paragraph for spacing
+            doc.add_paragraph()
+
+    buffer = BytesIO()
+    doc.save(buffer)
+    buffer.seek(0)
+    return buffer.getvalue()
+
+
+def generate_odt_document(content: str, title: str) -> bytes:
+    """Generate an ODT file from plain text content."""
+    if opendocument is None:
+        raise RuntimeError("odfpy is required to generate ODT files")
+
+    doc = opendocument.OpenDocumentText()
+
+    # Create styles
+    title_style = Style(name="Title", family="paragraph")
+    title_style.addElement(ParagraphProperties(textalign="center"))
+    title_text_props = TextProperties(
+        fontsize="14pt", fontweight="bold", fontfamily="Times New Roman"
+    )
+    title_style.addElement(title_text_props)
+    doc.styles.addElement(title_style)
+
+    normal_style = Style(name="Normal", family="paragraph")
+    normal_text_props = TextProperties(fontsize="12pt", fontfamily="Times New Roman")
+    normal_style.addElement(normal_text_props)
+    doc.styles.addElement(normal_style)
+
+    # Add title
+    title_para = P(text=title, stylename=title_style)
+    doc.text.addElement(title_para)
+
+    # Add content paragraphs
+    for line in content.split("\n"):
+        if line.strip():
+            para = P(text=line.strip(), stylename=normal_style)
+            doc.text.addElement(para)
+        else:
+            para = P(text="", stylename=normal_style)
+            doc.text.addElement(para)
+
+    buffer = BytesIO()
+    doc.save(buffer)
+    buffer.seek(0)
+    return buffer.getvalue()
+
+
+def generate_document(
+    content: str, title: str, output_format: str
+) -> tuple[bytes, str]:
+    """Generate a document in the specified format.
+
+    Returns a tuple of (file_bytes, filename_suffix).
+    """
+    if output_format.lower() == "odt":
+        return generate_odt_document(content, title), ".odt"
+    return generate_docx_document(content, title), ".docx"

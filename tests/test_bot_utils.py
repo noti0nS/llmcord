@@ -89,7 +89,7 @@ def test_user_has_permission_respects_blocked_user() -> None:
     user = _User(id=42, roles=[])
     channel = _Channel(type=discord.ChannelType.text, id=10)
 
-    assert user_has_permission(user, channel, config) is False
+    assert user_has_permission(user, channel, config) is False  # type: ignore[arg-type]
 
 
 def test_user_has_permission_allows_dm_when_enabled() -> None:
@@ -97,7 +97,7 @@ def test_user_has_permission_allows_dm_when_enabled() -> None:
     user = _User(id=100, roles=[])
     dm_channel = _Channel(type=discord.ChannelType.private, id=1)
 
-    assert user_has_permission(user, dm_channel, config) is True
+    assert user_has_permission(user, dm_channel, config) is True  # type: ignore[arg-type]
 
 
 def test_should_process_message_allows_server_reply_to_bot_from_cache() -> None:
@@ -112,7 +112,7 @@ def test_should_process_message_allows_server_reply_to_bot_from_cache() -> None:
 
     msg_nodes = {parent_msg_id: MsgNode(role="assistant")}
 
-    assert should_process_message(msg, bot_user, msg_nodes) is True
+    assert should_process_message(msg, bot_user, msg_nodes) is True  # type: ignore[arg-type]
 
 
 def test_should_process_message_rejects_server_non_reply_without_mention() -> None:
@@ -124,25 +124,25 @@ def test_should_process_message_rejects_server_non_reply_without_mention() -> No
         reference=None,
     )
 
-    assert should_process_message(msg, bot_user, {}) is False
+    assert should_process_message(msg, bot_user, {}) is False  # type: ignore[arg-type]
 
 
 def test_attachment_word_support_by_extension_and_content_type() -> None:
     assert (
         attachment_is_supported_word_document(
-            _Attachment(filename="file.docx", content_type=None)
+            _Attachment(filename="file.docx", content_type=None)  # type: ignore[arg-type]
         )
         is True
     )
     assert (
         attachment_is_supported_word_document(
-            _Attachment(filename="file.bin", content_type="application/vnd.oasis.opendocument.text")
+            _Attachment(filename="file.bin", content_type="application/vnd.oasis.opendocument.text")  # type: ignore[arg-type]
         )
         is True
     )
     assert (
         attachment_is_supported_word_document(
-            _Attachment(filename="file.pdf", content_type="application/pdf")
+            _Attachment(filename="file.pdf", content_type="application/pdf")  # type: ignore[arg-type]
         )
         is False
     )

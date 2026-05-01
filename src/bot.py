@@ -1,10 +1,10 @@
 import asyncio
 import logging
+import types
 from base64 import b64encode
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Literal, Optional
-import types
 
 import discord
 import httpx
@@ -13,6 +13,7 @@ from discord.ui import LayoutView, TextDisplay
 
 from .commands.abnt import register_abnt_command
 from .commands.model import register_model_command
+from .commands.research import register_research_command
 from .config import (
     build_openai_chat_completion_kwargs,
     get_config,
@@ -20,8 +21,6 @@ from .config import (
 )
 from .constants import (
     EMBED_COLOR_COMPLETE,
-    EMBED_COLOR_INCOMPLETE,
-    EDIT_DELAY_SECONDS,
     MAX_MESSAGE_NODES,
     STREAMING_INDICATOR,
     VISION_MODEL_TAGS,
@@ -144,7 +143,9 @@ def create_discord_bot(initial_config: Optional[dict[str, Any]] = None) -> comma
     intents = discord.Intents.default()
     intents.message_content = True
     activity = discord.CustomActivity(
-        name=(state.config.get("status_message") or "github.com/jakobdylanc/llmcord")[:128]
+        name=(state.config.get("status_message") or "github.com/jakobdylanc/llmcord")[
+            :128
+        ]
     )
     discord_bot = commands.Bot(
         intents=intents, activity=activity, command_prefix=commands.when_mentioned
@@ -153,6 +154,7 @@ def create_discord_bot(initial_config: Optional[dict[str, Any]] = None) -> comma
 
     register_model_command(discord_bot, state)
     register_abnt_command(discord_bot, state, httpx_client, user_has_permission)
+    register_research_command(discord_bot, state)
 
     @discord_bot.event
     async def on_ready() -> None:
@@ -178,7 +180,9 @@ def create_discord_bot(initial_config: Optional[dict[str, Any]] = None) -> comma
             return
 
         openai_client, openai_config = get_openai_config(state.config, state.curr_model)
-        accept_images = any(tag in state.curr_model.lower() for tag in VISION_MODEL_TAGS)
+        accept_images = any(
+            tag in state.curr_model.lower() for tag in VISION_MODEL_TAGS
+        )
         max_text = state.config.get("max_text", 100000)
         max_images = state.config.get("max_images", 5) if accept_images else 0
         max_messages = state.config.get("max_messages", 25)
@@ -296,7 +300,9 @@ def create_discord_bot(initial_config: Optional[dict[str, Any]] = None) -> comma
                             curr_node.parent_msg = prev_msg_in_channel
                         else:
                             reference = curr_msg.reference
-                            if reference is not None and not isinstance(curr_msg.channel, discord.Thread):
+                            if reference is not None and not isinstance(
+                                curr_msg.channel, discord.Thread
+                            ):
                                 parent_msg_id = reference.message_id
                                 if parent_msg_id is not None:
                                     curr_node.parent_msg = getattr(
@@ -381,9 +387,11 @@ def create_discord_bot(initial_config: Optional[dict[str, Any]] = None) -> comma
         )
 
         now = datetime.now().astimezone()
-        system_prompt = (state.config.get("system_prompt") or "").replace(
-            "{date}", now.strftime("%B %d %Y")
-        ).replace("{time}", now.strftime("%H:%M:%S %Z%z"))
+        system_prompt = (
+            (state.config.get("system_prompt") or "")
+            .replace("{date}", now.strftime("%B %d %Y"))
+            .replace("{time}", now.strftime("%H:%M:%S %Z%z"))
+        )
         messages.append(dict(role="system", content=build_system_prompt(system_prompt)))
 
         curr_content = finish_reason = None
