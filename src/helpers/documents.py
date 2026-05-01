@@ -1,6 +1,9 @@
 from io import BytesIO
+from typing import cast
 from xml.etree import ElementTree
 from zipfile import BadZipFile, ZipFile
+
+import pandoc
 
 import discord
 import httpx
@@ -13,19 +16,10 @@ from ..constants import (
 try:
     from docx import Document
     from docx.enum.text import WD_ALIGN_PARAGRAPH
-    from docx.shared import Pt
+    from docx.shared import Cm, Pt
 except ImportError:
     Document = None
-    Pt = WD_ALIGN_PARAGRAPH = None  # pyright: ignore[reportConstantRedefinition]
-
-try:
-    from odf import opendocument
-    from odf.style import ParagraphProperties, Style, TextProperties
-    from odf.text import P
-except ImportError:  # pragma: no cover
-    opendocument = None
-    Style = ParagraphProperties = TextProperties = None
-    P = None  # pyright: ignore[reportConstantRedefinition]
+    Pt = WD_ALIGN_PARAGRAPH = Cm = None  # pyright: ignore[reportConstantRedefinition]
 
 
 def attachment_is_supported_word_document(attachment: discord.Attachment) -> bool:
@@ -103,78 +97,67 @@ async def read_word_attachment(
     return text[:max_chars], len(text) > max_chars
 
 
-def generate_docx_document(content: str, title: str) -> bytes:
-    """Generate a DOCX file from plain text content."""
+def _run_pandoc(markdown_text: str, output_format: str) -> bytes:
+    try:
+        doc = pandoc.read(source=markdown_text, format="markdown")
+    except RuntimeError as exc:
+        raise RuntimeError(
+            "pandoc is required to generate documents. "
+            "Install it from https://pandoc.org/installing.html"
+        ) from exc
+    return cast(bytes, pandoc.write(doc, format=output_format))
+
+
+def _apply_abnt_docx(docx_bytes: bytes) -> bytes:
     if Document is None:
-        raise RuntimeError("python-docx is required to generate DOCX files")
+        return docx_bytes
 
-    doc = Document()
+    doc = Document(BytesIO(docx_bytes))
 
-    # Set default font
-    style = doc.styles["Normal"]
-    font = style.font  # pyright: ignore[reportAttributeAccessIssue]
-    font.name = "Times New Roman"
-    font.size = Pt(12)  # pyright: ignore[reportOptionalCall]
+    section = doc.sections[0]
+    section.page_width = Cm(21)  # pyright: ignore[reportOptionalCall]
+    section.page_height = Cm(29.7)  # pyright: ignore[reportOptionalCall]
+    section.top_margin = Cm(3)  # pyright: ignore[reportOptionalCall]
+    section.bottom_margin = Cm(2)  # pyright: ignore[reportOptionalCall]
+    section.left_margin = Cm(3)  # pyright: ignore[reportOptionalCall]
+    section.right_margin = Cm(2)  # pyright: ignore[reportOptionalCall]
 
-    # Add title
-    title_para = doc.add_paragraph()
-    title_para.alignment = WD_ALIGN_PARAGRAPH.CENTER  # pyright: ignore[reportOptionalMemberAccess]
-    title_run = title_para.add_run(title)
-    title_run.bold = True
-    title_run.font.size = Pt(14)  # pyright: ignore[reportOptionalMemberAccess,reportOptionalCall]
+    try:
+        normal = doc.styles["Normal"]
+    except KeyError:
+        pass
+    else:
+        normal.font.name = "Times New Roman"  # pyright: ignore[reportAttributeAccessIssue]
+        normal.font.size = Pt(12)  # pyright: ignore[reportAttributeAccessIssue,reportOptionalCall]
+        normal.paragraph_format.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY  # pyright: ignore[reportAttributeAccessIssue,reportOptionalMemberAccess]
+        normal.paragraph_format.line_spacing = 1.5  # pyright: ignore[reportAttributeAccessIssue]
 
-    # Add content paragraphs
-    for line in content.split("\n"):
-        if line.strip():
-            doc.add_paragraph(line.strip())
-        else:
-            # Add empty paragraph for spacing
-            doc.add_paragraph()
+    for name in ("Heading 1", "Heading 2", "Heading 3", "heading 1", "heading 2", "heading 3"):
+        try:
+            heading = doc.styles[name]
+        except KeyError:
+            continue
+        heading.font.name = "Times New Roman"  # pyright: ignore[reportAttributeAccessIssue]
+        heading.font.size = Pt(12)  # pyright: ignore[reportAttributeAccessIssue,reportOptionalCall]
+        heading.font.bold = True  # pyright: ignore[reportAttributeAccessIssue]
+        heading.paragraph_format.line_spacing = 1.5  # pyright: ignore[reportAttributeAccessIssue]
+        heading.paragraph_format.space_before = Pt(12)  # pyright: ignore[reportAttributeAccessIssue,reportOptionalCall]
+        heading.paragraph_format.space_after = Pt(6)  # pyright: ignore[reportAttributeAccessIssue,reportOptionalCall]
 
     buffer = BytesIO()
     doc.save(buffer)
     buffer.seek(0)
     return buffer.getvalue()
+
+
+def generate_docx_document(content: str, title: str) -> bytes:
+    md = f"# {title}\n\n{content}"
+    return _apply_abnt_docx(_run_pandoc(md, "docx"))
 
 
 def generate_odt_document(content: str, title: str) -> bytes:
-    """Generate an ODT file from plain text content."""
-    if opendocument is None:
-        raise RuntimeError("odfpy is required to generate ODT files")
-
-    doc = opendocument.OpenDocumentText()
-
-    # Create styles
-    title_style = Style(name="Title", family="paragraph")  # pyright: ignore[reportOptionalCall]
-    title_style.addElement(ParagraphProperties(textalign="center"))  # pyright: ignore[reportOptionalCall]
-    title_text_props = TextProperties(  # pyright: ignore[reportOptionalCall]
-        fontsize="14pt", fontweight="bold", fontfamily="Times New Roman"
-    )
-    title_style.addElement(title_text_props)
-    doc.styles.addElement(title_style)
-
-    normal_style = Style(name="Normal", family="paragraph")  # pyright: ignore[reportOptionalCall]
-    normal_text_props = TextProperties(fontsize="12pt", fontfamily="Times New Roman")  # pyright: ignore[reportOptionalCall]
-    normal_style.addElement(normal_text_props)
-    doc.styles.addElement(normal_style)
-
-    # Add title
-    title_para = P(text=title, stylename=title_style)  # pyright: ignore[reportOptionalCall]
-    doc.text.addElement(title_para)  # pyright: ignore[reportAttributeAccessIssue]
-
-    # Add content paragraphs
-    for line in content.split("\n"):
-        if line.strip():
-            para = P(text=line.strip(), stylename=normal_style)  # pyright: ignore[reportOptionalCall]
-            doc.text.addElement(para)  # pyright: ignore[reportAttributeAccessIssue]
-        else:
-            para = P(text="", stylename=normal_style)  # pyright: ignore[reportOptionalCall]
-            doc.text.addElement(para)  # pyright: ignore[reportAttributeAccessIssue]
-
-    buffer = BytesIO()
-    doc.save(buffer)
-    buffer.seek(0)
-    return buffer.getvalue()
+    md = f"# {title}\n\n{content}"
+    return _run_pandoc(md, "odt")
 
 
 def generate_document(

@@ -18,7 +18,7 @@ async def await_task_with_heartbeats(
             )
         except asyncio.TimeoutError:
             logging.info(
-                "%s still running (elapsed: %.2fs)",
+                "%s (elapsed: %.2fs)",
                 label,
                 datetime.now().timestamp() - started_at,
             )

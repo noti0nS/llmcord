@@ -346,7 +346,10 @@ def create_discord_bot(initial_config: dict[str, Any] | None = None) -> commands
                                         )
 
                     except (discord.NotFound, discord.HTTPException):
-                        logging.exception("Error fetching next message in the chain")
+                        logging.debug(
+                            "Could not fetch parent message (channel=%s)",
+                            curr_msg.channel.id,
+                        )
                         curr_node.fetch_parent_failed = True
 
                 if curr_node.images[:max_images]:

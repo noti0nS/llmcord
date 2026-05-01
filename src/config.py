@@ -83,6 +83,8 @@ def build_openai_chat_completion_kwargs(
     *,
     stream: bool,
     max_tokens: int | None = None,
+    tools: list[dict[str, Any]] | None = None,
+    tool_choice: str | dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     kwargs: dict[str, Any] = {
         "model": openai_config["model"],
@@ -98,5 +100,9 @@ def build_openai_chat_completion_kwargs(
         kwargs["extra_body"] = openai_config["extra_body"]
     if max_tokens is not None:
         kwargs["max_tokens"] = max_tokens
+    if tools is not None:
+        kwargs["tools"] = tools
+    if tool_choice is not None:
+        kwargs["tool_choice"] = tool_choice
 
     return kwargs

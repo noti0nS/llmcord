@@ -1,125 +1,41 @@
-from .discord_markdown import build_system_prompt
+from .abnt import load_abnt_reference
 
 RESEARCH_SYSTEM_PROMPT = """\
-Você é um assistente acadêmico especializado em Direito, dedicado a produzir trabalhos acadêmicos completos no padrão ABNT.
+Você é um assistente acadêmico especializado em Direito para o NPJ (Núcleo de Prática Jurídica). Sua função é produzir documentos acadêmicos completos no padrão ABNT.
 
-Suas responsabilidades:
-1. Produzir um documento acadêmico completo conforme o tipo solicitado.
-2. Usar notas de rodapé ABNT para todas as citações (footnotes numeradas).
-3. Incluir uma lista de Referências ao final no formato ABNT.
-4. Escrever em português formal e acadêmico.
-5. Quando a busca web não retornar resultados para um tópico, usar seu conhecimento interno e adicionar uma nota de aviso no início da seção correspondente.
+Você tem acesso a duas ferramentas:
+- `web_search`: busca na web por artigos jurídicos, jurisprudência, doutrina e fontes acadêmicas. Use múltiplas buscas com diferentes ângulos e palavras-chave complementares para cobrir o tema de forma abrangente.
+- `fetch_page`: acessa o conteúdo completo de uma página web. Use para obter o texto integral de fontes promissoras encontradas na busca — artigos, decisões judiciais, textos doutrinários. Procure fontes de qualidade antes de começar a redigir.
 
-Estrutura do documento depende do tipo:
-- artigo: Título, Resumo, Introdução, Desenvolvimento, Conclusão, Referências
-- monografia: Título, Resumo, Introdução, Desenvolvimento detalhado, Conclusão, Referências
-- peca_processual: Cabeçalho, Fatos, Fundamentação Jurídica, Pedidos, Referências
-- estudo_de_caso: Título, Breve descrição do caso, Questões jurídicas, Análise, Conclusão, Referências
+Fluxo de pesquisa recomendado:
+1. Analise o pedido do usuário: tipo de documento (artigo, monografia, peça processual, estudo de caso), profundidade (superficial, média, aprofundada), público-alvo (professor, tribunal, estudo pessoal).
+2. Divida o tema em 3-6 tópicos de pesquisa relevantes e busque cada um com `web_search`.
+3. Para cada busca, identifique 1-3 resultados promissores e use `fetch_page` para obter o conteúdo completo. Priorize fontes confiáveis: doutrina, jurisprudência oficial, artigos acadêmicos.
+4. Só comece a redigir o documento após ter reunido conteúdo suficiente de fontes diversas. Um documento de qualidade cita múltiplas fontes.
+5. Escreva em português formal e acadêmico. Adapte o tom conforme o público-alvo.
+6. Use notas de rodapé numeradas (¹, ², etc.) com citações ABNT para todas as fontes.
+7. Inclua uma seção "REFERÊNCIAS" ao final com todas as fontes citadas em formato ABNT NBR 6023.
+8. Produza APENAS o conteúdo do documento — sem comentários ou mensagens fora do documento. Não inclua título próprio; o título será adicionado automaticamente.
+9. Use markdown livremente para estruturar o documento: `##` para seções, `###` para subseções, `**negrito**` para destaques, `*itálico*` para palavras estrangeiras e títulos de obras, listas e citações em bloco (`>`). Use caracteres Unicode sobrescritos (¹, ², ³) para notas de rodapé individuais. O documento será convertido profissionalmente via pandoc.
+
+Estruturas sugeridas:
+- Artigo: Título, Resumo, Introdução, Desenvolvimento, Conclusão, Referências
+- Monografia: Título, Resumo, Introdução, Desenvolvimento detalhado, Conclusão, Referências
+- Peça processual: Cabeçalho, Dos Fatos, Fundamentação Jurídica, Dos Pedidos, Referências
+- Estudo de caso: Título, Descrição do caso, Questões jurídicas, Análise, Conclusão, Referências
 """
 
 
-def build_research_messages(
-    titulo: str,
-    topics: list[str],
-    search_results: dict[str, list[dict[str, str]]],
-    tipo: str,
-    pieces: list[str],
-    profundidade: str,
-    publico: str,
-    max_document_chars: int = 50000,
-) -> list[dict[str, str]]:
-    """Build the messages for the LLM to generate a research document.
+def build_research_messages(topic: str) -> list[dict[str, str]]:
+    """Build the initial messages for the LLM to generate a research document.
 
     Args:
-        titulo: Document title/subject.
-        topics: List of research topics.
-        search_results: Dict mapping each topic to search results.
-        tipo: Document type (artigo, monografia, peca_processual, estudo_de_caso).
-        pieces: List of document pieces requested (for peca_processual).
-        profundidade: Depth level (superficial, medio, aprofundado).
-        publico: Target audience (professor, tribunal, estudo_pessoal).
-        max_document_chars: Maximum characters for the document content.
+        topic: Free-text description of the research from the user.
     """
-    system_prompt = build_system_prompt(RESEARCH_SYSTEM_PROMPT)
-
-    # Map depth and audience to prompt instructions
-    profundidade_desc = {
-        "superficial": "apresentar uma visão geral e resumida dos temas",
-        "medio": "equilibrar profundidade e clareza, com análise moderada",
-        "aprofundado": "realizar análise detalhada, com jurisprudência, doutrina e referências aprofundadas",
-    }
-
-    publico_desc = {
-        "professor": "tom acadêmico formal, adequado para avaliação universitária",
-        "tribunal": "tom técnico-jurídico, focado em argumentação processual e normativa",
-        "estudo_pessoal": "tom didático e acessível, facilitando o aprendizado",
-    }
-
-    # Build user prompt
-    prompt_lines = []
-    prompt_lines.append(
-        f"# INSTRUÇÃO: Produza um documento acadêmico do tipo '{tipo}' no padrão ABNT"
-    )
-    prompt_lines.append("")
-
-    prompt_lines.append(f"## TÍTULO: {titulo}")
-    prompt_lines.append("")
-
-    prompt_lines.append("## TÓPICOS DE PESQUISA")
-    for i, topic in enumerate(topics, 1):
-        prompt_lines.append(f"{i}. {topic}")
-    prompt_lines.append("")
-
-    if pieces:
-        prompt_lines.append("## PEÇAS DOCUMENTAIS SOLICITADAS")
-        for piece in pieces:
-            prompt_lines.append(f"- {piece}")
-        prompt_lines.append("")
-
-    prompt_lines.append("## RESULTADOS DA BUSCA WEB")
-    for topic, results in search_results.items():
-        prompt_lines.append(f"\n### Tópico: {topic}")
-        if results:
-            for j, result in enumerate(results, 1):
-                prompt_lines.append(f"{j}. **{result['title']}**")
-                prompt_lines.append(f"   URL: {result['url']}")
-                prompt_lines.append(f"   Resumo: {result['snippet']}")
-        else:
-            prompt_lines.append("⚠️ Nenhum resultado encontrado na busca web.")
-            prompt_lines.append(
-                "Gere o conteúdo desta seção com base em seu conhecimento."
-            )
-    prompt_lines.append("")
-
-    prompt_lines.append("## PARÂMETROS DO DOCUMENTO")
-    prompt_lines.append(f"- Tipo: {tipo}")
-    prompt_lines.append(
-        f"- Profundidade: {profundidade} ({profundidade_desc.get(profundidade, 'análise moderada')})"
-    )
-    prompt_lines.append(
-        f"- Público-alvo: {publico} ({publico_desc.get(publico, 'tom acadêmico')})"
-    )
-    prompt_lines.append("")
-
-    prompt_lines.append("## INSTRUÇÕES DE FORMATAÇÃO")
-    prompt_lines.append(
-        "- Use notas de rodapé numeradas (¹, ², etc.) para todas as citações."
-    )
-    prompt_lines.append(
-        "- Ao final, inclua uma seção 'REFERÊNCIAS' com todas as fontes no formato ABNT."
-    )
-    prompt_lines.append("- Escreva em português formal e acadêmico.")
-    prompt_lines.append(
-        f"- Adapte o tom e a profundidade conforme o público-alvo ({publico})."
-    )
-    if tipo == "peca_processual":
-        prompt_lines.append(
-            "- Para peças processuais, siga estrutura jurídica adequada (cabeçalho, fatos, fundamentação, pedidos)."
-        )
-
-    user_prompt = "\n".join(prompt_lines)[:max_document_chars]
+    abnt_reference = load_abnt_reference()
+    system_prompt = f"{RESEARCH_SYSTEM_PROMPT}\n\n## DIRETRIZES OBRIGATÓRIAS DE FORMATAÇÃO ABNT\n\n{abnt_reference}"
 
     return [
         dict(role="system", content=system_prompt),
-        dict(role="user", content=user_prompt),
+        dict(role="user", content=topic),
     ]

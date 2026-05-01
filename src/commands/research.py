@@ -1,4 +1,5 @@
 import asyncio
+import json
 import logging
 import re
 from datetime import datetime
@@ -12,30 +13,69 @@ from ..config import build_openai_chat_completion_kwargs, get_config, get_openai
 from ..helpers.async_utils import await_task_with_heartbeats
 from ..helpers.content import get_completion_text
 from ..helpers.documents import generate_document
-from ..helpers.search import search_topics
+from ..helpers.search import fetch_page_content, search_topics
 from ..llm import get_provider_error_detail
 from ..prompts.research import build_research_messages
 
+WEB_SEARCH_TOOL: list[dict[str, Any]] = [
+    {
+        "type": "function",
+        "function": {
+            "name": "web_search",
+            "description": (
+                "Busca na web por artigos jurídicos, jurisprudência, doutrina e fontes acadêmicas. "
+                "Use quando precisar de informações atualizadas ou fontes específicas não disponíveis "
+                "em seus dados de treinamento."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "Termo de busca em português para encontrar fontes jurídicas relevantes",
+                    }
+                },
+                "required": ["query"],
+            },
+        },
+    }
+]
 
-def _parse_list_input(text: str) -> list[str]:
-    """Parse a string into a list of items.
+FETCH_PAGE_TOOL: list[dict[str, Any]] = [
+    {
+        "type": "function",
+        "function": {
+            "name": "fetch_page",
+            "description": (
+                "Acessa o conteúdo completo de uma página web. "
+                "Use para obter o texto integral de artigos, decisões, doutrina "
+                "e outras fontes acadêmicas encontradas nas buscas. "
+                "Retorna o texto extraído da página (limitado a ~8000 caracteres). "
+                "Só use para URLs retornadas pela ferramenta web_search."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "url": {
+                        "type": "string",
+                        "description": "URL completa da página a ser acessada (ex: https://exemplo.com/artigo)",
+                    }
+                },
+                "required": ["url"],
+            },
+        },
+    }
+]
 
-    Items can be separated by semicolons, newlines, or both.
-    """
-    if not text or not text.strip():
-        return []
-    # Split by semicolons first, then by newlines
-    items = []
-    for semicolon_part in text.split(";"):
-        for line in semicolon_part.split("\n"):
-            stripped = line.strip()
-            if stripped:
-                items.append(stripped)
-    return items
+ALL_RESEARCH_TOOLS = WEB_SEARCH_TOOL + FETCH_PAGE_TOOL
+
+FORMATO_CHOICES = [
+    discord.app_commands.Choice(name="DOCX (Microsoft Word)", value="docx"),
+    discord.app_commands.Choice(name="ODT (LibreOffice)", value="odt"),
+]
 
 
 def build_research_filename(title: str, output_format: str) -> str:
-    """Build a safe filename for the research document."""
     safe_title = re.sub(r"[^\w\s-]", "", title).strip()[:50]
     safe_title = re.sub(r"[-\s]+", "_", safe_title)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -49,7 +89,6 @@ async def send_research_result(
     filename: str,
     file_bytes: bytes,
 ) -> None:
-    """Send the research result as a file or in a thread if too large."""
     max_file_size = 7.5 * 1024 * 1024
 
     if len(file_bytes) < max_file_size:
@@ -104,32 +143,28 @@ async def send_research_result(
         )
 
 
-# Choices for the slash command
-TIPO_DOCUMENTO_CHOICES = [
-    discord.app_commands.Choice(name="Artigo", value="artigo"),
-    discord.app_commands.Choice(name="Monografia", value="monografia"),
-    discord.app_commands.Choice(name="Peça processual", value="peca_processual"),
-    discord.app_commands.Choice(name="Estudo de caso", value="estudo_de_caso"),
-]
+def _format_tool_call(tool_call: Any) -> dict[str, Any]:
+    return {
+        "id": tool_call.id,
+        "type": "function",
+        "function": {
+            "name": tool_call.function.name,
+            "arguments": tool_call.function.arguments,
+        },
+    }
 
-PROFUNDIDADE_CHOICES = [
-    discord.app_commands.Choice(name="Superficial (resumo geral)", value="superficial"),
-    discord.app_commands.Choice(name="Médio (equilíbrio)", value="medio"),
-    discord.app_commands.Choice(
-        name="Aprofundado (análise detalhada)", value="aprofundado"
-    ),
-]
 
-PUBLICO_CHOICES = [
-    discord.app_commands.Choice(name="Professor", value="professor"),
-    discord.app_commands.Choice(name="Tribunal", value="tribunal"),
-    discord.app_commands.Choice(name="Estudo pessoal", value="estudo_pessoal"),
-]
-
-FORMATO_CHOICES = [
-    discord.app_commands.Choice(name="DOCX (Microsoft Word)", value="docx"),
-    discord.app_commands.Choice(name="ODT (LibreOffice)", value="odt"),
-]
+def _format_search_results(results: list[dict[str, Any]]) -> str:
+    formatted = []
+    for r in results:
+        formatted.append(
+            {
+                "title": r.get("title", ""),
+                "url": r.get("url", ""),
+                "snippet": r.get("snippet", ""),
+            }
+        )
+    return json.dumps(formatted, ensure_ascii=False)
 
 
 def register_research_command(
@@ -138,138 +173,271 @@ def register_research_command(
 ) -> None:
     @discord_bot.tree.command(
         name="research",
-        description="Gere um documento acadêmico ABNT a partir de tópicos de pesquisa",
+        description="Gere um documento acadêmico ABNT a partir de uma descrição de pesquisa",
     )
     @discord.app_commands.describe(
-        titulo="Título ou tema principal da pesquisa (ex: NPJ)",
-        topicos="Tópicos de pesquisa, separados por ponto-e-vírgula ou nova linha",
-        tipo="Tipo de documento a gerar",
-        pecas="Peças processuais (quando tipo=peça processual), separadas por ponto-e-vírgula",
-        profundidade="Nível de profundidade do conteúdo",
-        publico="Público-alvo do documento",
-        formato="Formato do arquivo de saída",
+        topic="Descreva sua pesquisa em texto livre: tema, tipo de documento, tópicos, etc.",
+        format="Formato do arquivo de saída",
     )
     @discord.app_commands.choices(
-        tipo=TIPO_DOCUMENTO_CHOICES,
-        profundidade=PROFUNDIDADE_CHOICES,
-        publico=PUBLICO_CHOICES,
-        formato=FORMATO_CHOICES,
+        format=FORMATO_CHOICES,
     )
-    async def research_command(
+    async def research_command(  # pyright: ignore[reportUnusedFunction]
         interaction: discord.Interaction,
-        titulo: str,
-        topicos: str,
-        tipo: discord.app_commands.Choice[str] | None = None,
-        pecas: str | None = None,
-        profundidade: discord.app_commands.Choice[str] | None = None,
-        publico: discord.app_commands.Choice[str] | None = None,
-        formato: discord.app_commands.Choice[str] | None = None,
+        topic: str,
+        format: discord.app_commands.Choice[str] | None = None,
     ) -> None:
         state.config = await asyncio.to_thread(get_config)
 
-        # Resolve choices
-        tipo_valor = tipo.value if tipo else "artigo"
-        profundidade_valor = profundidade.value if profundidade else "medio"
-        publico_valor = publico.value if publico else "professor"
-        formato_valor = formato.value if formato else "docx"
+        formato_valor = format.value if format else "docx"
 
-        # Parse topics
-        topics_list = _parse_list_input(topicos)
-        if not topics_list:
+        if not topic.strip():
             await interaction.response.send_message(
-                "Nenhum tópico de pesquisa fornecido. Informe pelo menos um tópico.",
+                "Descreva sua pesquisa. Exemplo: "
+                + "`Preciso de uma monografia sobre alvará judicial no TJSP, aprofundada para professor.`",
                 ephemeral=True,
             )
             return
 
-        # Parse pieces (only relevant for peca_processual)
-        pieces_list = _parse_list_input(pecas) if pecas else []
-
-        # Check max topics
-        max_topics = state.config.get("research", {}).get("max_topics", 10)
-        if len(topics_list) > max_topics:
-            topics_list = topics_list[:max_topics]
-            await interaction.response.send_message(
-                f"⚠️ Limite de {max_topics} tópicos excedido. Apenas os primeiros {max_topics} serão pesquisados.",
-                ephemeral=True,
-            )
-        else:
-            await interaction.response.send_message(
-                f"🔍 Pesquisando {len(topics_list)} tópico(s)... Isso pode levar alguns minutos.",
-                ephemeral=True,
-            )
-
-        # Web search
-        search_results_per_topic = state.config.get("research", {}).get(
-            "search_results_per_topic", 5
+        await interaction.response.send_message(
+            "🔍 Pesquisando e gerando o documento... Isso pode levar alguns minutos.",
+            ephemeral=True,
         )
+
         logging.info(
-            "Research search started (user ID: %s, titulo: %s, topics: %s, tipo: %s, formato: %s)",
+            "Research started (user ID: %s, topic_len: %s, formato: %s)",
             interaction.user.id,
-            titulo,
-            len(topics_list),
-            tipo_valor,
+            len(topic),
             formato_valor,
         )
 
-        try:
-            search_results = await search_topics(
-                topics_list,
-                max_results=search_results_per_topic,
-            )
-        except Exception:
-            logging.exception("Research web search failed")
-            search_results = {t: [] for t in topics_list}
+        messages: list[dict[str, Any]] = build_research_messages(topic)
 
-        fallback_topics = [t for t, r in search_results.items() if not r]
-        if fallback_topics:
-            logging.warning(
-                "Research fallback topics (user ID: %s): %s",
-                interaction.user.id,
-                fallback_topics,
-            )
+        research_config = state.config.get("research", {})
+        max_iterations = research_config.get("max_tool_iterations", 15)
+        search_results_count = research_config.get("search_results_per_topic", 8)
+        max_pages = research_config.get("max_page_fetches", 5)
 
-        # Build LLM messages
-        max_document_chars = state.config.get("research", {}).get(
-            "max_document_chars", 50000
-        )
-        messages = build_research_messages(
-            titulo=titulo,
-            topics=topics_list,
-            search_results=search_results,
-            tipo=tipo_valor,
-            pieces=pieces_list,
-            profundidade=profundidade_valor,
-            publico=publico_valor,
-            max_document_chars=max_document_chars,
-        )
-
-        # Generate document with LLM
         openai_client, openai_config = get_openai_config(state.config, state.curr_model)
 
         raw_output = ""
         request_started_at = datetime.now().timestamp()
+        pages_fetched = 0
+
         try:
-            logging.info(
-                "Research LLM request started (user ID: %s, model: %s, topics: %s)",
-                interaction.user.id,
-                openai_config["model"],
-                len(topics_list),
-            )
-            completion_task = asyncio.create_task(
-                openai_client.chat.completions.create(
-                    **build_openai_chat_completion_kwargs(
-                        openai_config, messages, stream=False
+            for iteration in range(max_iterations):
+                logging.info(
+                    "Research LLM iteration %s/%s (user ID: %s, model: %s)",
+                    iteration + 1,
+                    max_iterations,
+                    interaction.user.id,
+                    openai_config["model"],
+                )
+
+                completion_task = asyncio.create_task(
+                    openai_client.chat.completions.create(
+                        **build_openai_chat_completion_kwargs(
+                            openai_config,
+                            messages,
+                            stream=False,
+                            tools=ALL_RESEARCH_TOOLS,
+                        )
                     )
                 )
-            )
-            completion = await await_task_with_heartbeats(
-                completion_task,
-                (
-                    "Research LLM request still running "
-                    f"(user ID: {interaction.user.id}, model: {openai_config['model']})"
-                ),
-            )
+                completion = await await_task_with_heartbeats(
+                    completion_task,
+                    (
+                        "Research LLM request still running "
+                        f"(user ID: {interaction.user.id}, "
+                        f"model: {openai_config['model']})"
+                    ),
+                )
+
+                if not completion.choices:
+                    raise RuntimeError("LLM returned no choices")
+
+                choice = completion.choices[0]
+
+                # Handle tool calls
+                if (
+                    choice.finish_reason == "tool_calls"
+                    and choice.message
+                    and choice.message.tool_calls
+                ):
+                    tool_calls = choice.message.tool_calls
+
+                    tool_summary = [
+                        f"{tc.function.name}({tc.function.arguments})"
+                        for tc in tool_calls
+                    ]
+                    logging.info(
+                        "Research tool calls requested (user ID: %s): %s",
+                        interaction.user.id,
+                        "; ".join(tool_summary),
+                    )
+
+                    messages.append(
+                        {
+                            "role": "assistant",
+                            "content": choice.message.content or "",
+                            "tool_calls": [_format_tool_call(tc) for tc in tool_calls],
+                        }
+                    )
+
+                    for tc in tool_calls:
+                        if tc.function.name == "web_search":
+                            try:
+                                args = json.loads(tc.function.arguments)
+                            except json.JSONDecodeError:
+                                messages.append(
+                                    {
+                                        "role": "tool",
+                                        "tool_call_id": tc.id,
+                                        "content": "Erro: argumentos inválidos.",
+                                    }
+                                )
+                                continue
+
+                            query = args.get("query", "")
+                            logging.info(
+                                "Research web_search (user ID: %s, query: %s)",
+                                interaction.user.id,
+                                query,
+                            )
+
+                            try:
+                                results = await search_topics(
+                                    [query],
+                                    max_results=search_results_count,
+                                )
+                                search_data = results.get(query, [])
+                            except Exception:
+                                logging.exception(
+                                    "Research web search failed for query: %s",
+                                    query,
+                                )
+                                search_data = []
+
+                            messages.append(
+                                {
+                                    "role": "tool",
+                                    "tool_call_id": tc.id,
+                                    "content": _format_search_results(search_data),
+                                }
+                            )
+
+                        elif tc.function.name == "fetch_page":
+                            if pages_fetched >= max_pages:
+                                messages.append(
+                                    {
+                                        "role": "tool",
+                                        "tool_call_id": tc.id,
+                                        "content": (
+                                            "Limite de páginas atingido. "
+                                            "Continue com as fontes já obtidas."
+                                        ),
+                                    }
+                                )
+                                continue
+
+                            try:
+                                args = json.loads(tc.function.arguments)
+                            except json.JSONDecodeError:
+                                messages.append(
+                                    {
+                                        "role": "tool",
+                                        "tool_call_id": tc.id,
+                                        "content": "Erro: argumentos inválidos.",
+                                    }
+                                )
+                                continue
+
+                            url = args.get("url", "")
+                            logging.info(
+                                "Research fetch_page (user ID: %s, url: %s)",
+                                interaction.user.id,
+                                url,
+                            )
+                            pages_fetched += 1
+
+                            page_content = await fetch_page_content(url)
+                            if page_content:
+                                messages.append(
+                                    {
+                                        "role": "tool",
+                                        "tool_call_id": tc.id,
+                                        "content": page_content,
+                                    }
+                                )
+                            else:
+                                messages.append(
+                                    {
+                                        "role": "tool",
+                                        "tool_call_id": tc.id,
+                                        "content": (
+                                            "Não foi possível acessar o conteúdo "
+                                            "desta página. Tente outra URL ou "
+                                            "continue com as fontes disponíveis."
+                                        ),
+                                    }
+                                )
+
+                    continue
+
+                # Handle stop (document complete)
+                if choice.finish_reason == "stop":
+                    raw_output = get_completion_text(completion)
+                    if raw_output:
+                        break
+                    continue
+
+                # Handle length (max_tokens reached)
+                if choice.finish_reason == "length":
+                    logging.warning(
+                        "Research LLM reached max_tokens (user ID: %s)",
+                        interaction.user.id,
+                    )
+                    raw_output = get_completion_text(completion)
+                    break
+
+                # Handle content_filter
+                if choice.finish_reason == "content_filter":
+                    logging.error(
+                        "Research LLM content filter triggered (user ID: %s)",
+                        interaction.user.id,
+                    )
+                    await interaction.followup.send(
+                        "A geração do documento foi bloqueada pelo filtro de conteúdo do provedor."
+                    )
+                    return
+
+                # Unexpected finish reason — capture whatever content exists
+                raw_output = get_completion_text(completion)
+                if raw_output:
+                    break
+
+            # If loop exhausted without content, force final generation
+            if not raw_output.strip():
+                logging.warning(
+                    "Research tool loop exhausted, forcing final generation (user ID: %s)",
+                    interaction.user.id,
+                )
+                force_task = asyncio.create_task(
+                    openai_client.chat.completions.create(
+                        **build_openai_chat_completion_kwargs(
+                            openai_config,
+                            messages,
+                            stream=False,
+                            tool_choice="none",
+                        )
+                    )
+                )
+                force_completion = await await_task_with_heartbeats(
+                    force_task,
+                    "Research final generation still running",
+                )
+                raw_output = get_completion_text(force_completion)
+
             elapsed = datetime.now().timestamp() - request_started_at
             logging.info(
                 "Research LLM request completed (user ID: %s, model: %s, elapsed: %.2fs)",
@@ -277,7 +445,7 @@ def register_research_command(
                 openai_config["model"],
                 elapsed,
             )
-            raw_output = get_completion_text(completion)
+
         except APIError as exc:
             logging.exception(
                 "Provider error while generating research: %s",
@@ -291,7 +459,8 @@ def register_research_command(
         except Exception:
             logging.exception("Error while generating research document")
             await interaction.followup.send(
-                "Não consegui gerar o documento de pesquisa agora. Verifique os logs e tente novamente."
+                "Não consegui gerar o documento de pesquisa agora. "
+                + "Verifique os logs e tente novamente."
             )
             return
 
@@ -303,12 +472,13 @@ def register_research_command(
 
         # Generate document file
         try:
-            file_bytes, _ = generate_document(raw_output, titulo, formato_valor)
-            filename = build_research_filename(titulo, formato_valor)
+            file_bytes, _ = generate_document(raw_output, topic, formato_valor)
+            filename = build_research_filename(topic, formato_valor)
         except Exception:
             logging.exception("Error while generating document file")
             await interaction.followup.send(
-                "Não consegui gerar o arquivo do documento. O conteúdo será enviado em mensagens."
+                "Não consegui gerar o arquivo do documento. "
+                + "O conteúdo será enviado em mensagens."
             )
             await send_research_result(interaction, raw_output, "pesquisa.txt", b"")
             return
