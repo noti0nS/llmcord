@@ -139,8 +139,6 @@ def create_discord_bot(initial_config: Optional[dict[str, Any]] = None) -> comma
     config = initial_config or get_config()
     curr_model = next(iter(config["models"]))
     msg_nodes: dict[int, MsgNode] = {}
-    last_task_time = 0.0
-
     state = types.SimpleNamespace(config=config, curr_model=curr_model)
 
     intents = discord.Intents.default()
@@ -168,8 +166,6 @@ def create_discord_bot(initial_config: Optional[dict[str, Any]] = None) -> comma
 
     @discord_bot.event
     async def on_message(new_msg: discord.Message) -> None:
-        nonlocal last_task_time
-
         bot_user = discord_bot.user
         if bot_user is None:
             return
@@ -479,46 +475,17 @@ def create_discord_bot(initial_config: Optional[dict[str, Any]] = None) -> comma
                         )
                         first_chunk_logged = True
 
-                    if not use_plain_responses:
-                        assert response_embed is not None
-                        time_delta = datetime.now().timestamp() - last_task_time
-                        ready_to_edit = time_delta >= EDIT_DELAY_SECONDS
-                        msg_split_incoming = (
-                            finish_reason is None
-                            and len(response_contents[-1] + curr_content)
-                            > max_message_length
-                        )
-                        is_final_edit = finish_reason is not None or msg_split_incoming
-                        is_good_finish = (
-                            finish_reason is not None
-                            and finish_reason.lower() in ("stop", "end_turn")
-                        )
-
-                        if start_next_msg or ready_to_edit or is_final_edit:
-                            response_embed.description = (
-                                response_contents[-1]
-                                if is_final_edit
-                                else (response_contents[-1] + STREAMING_INDICATOR)
-                            )
-                            response_embed.color = (
-                                EMBED_COLOR_COMPLETE
-                                if msg_split_incoming or is_good_finish
-                                else EMBED_COLOR_INCOMPLETE
-                            )
-
-                            if start_next_msg:
-                                await reply_helper(embed=response_embed, silent=True)
-                            else:
-                                await asyncio.sleep(EDIT_DELAY_SECONDS - time_delta)
-                                await response_msgs[-1].edit(embed=response_embed)
-
-                            last_task_time = datetime.now().timestamp()
-
                 if use_plain_responses:
                     for content in response_contents:
                         await reply_helper(
                             view=LayoutView().add_item(TextDisplay(content=content))
                         )
+                else:
+                    assert response_embed is not None
+                    for content in response_contents:
+                        response_embed.description = content
+                        response_embed.color = EMBED_COLOR_COMPLETE
+                        await reply_helper(embed=response_embed, silent=True)
             logging.info(
                 "LLM streaming request completed (user ID: %s, model: %s, finish_reason: %s, chunks: %s, elapsed: %.2fs)",
                 new_msg.author.id,
