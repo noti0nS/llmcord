@@ -17,7 +17,9 @@ def register_model_command(
         name="model", description="View or switch the current model"
     )
     async def model_command(interaction: discord.Interaction, model: str) -> None:
-        interaction_channel_type = getattr(interaction.channel, "type", None)
+        interaction_channel_type = (
+            interaction.channel.type if interaction.channel else None
+        )
 
         if model == state.curr_model:
             output = f"Current model: `{state.curr_model}`"
@@ -37,7 +39,7 @@ def register_model_command(
         )
 
     @model_command.autocomplete("model")
-    async def model_autocomplete(
+    async def model_autocomplete(  # pyright: ignore[reportUnusedFunction]
         interaction: discord.Interaction, curr_str: str
     ) -> list[Choice[str]]:
         del interaction

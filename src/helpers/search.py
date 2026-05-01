@@ -22,6 +22,7 @@ async def search_topics(
     for topic in topics:
         topic_results: list[dict[str, Any]] = []
         try:
+
             def _search():
                 with DDGS() as ddgs:
                     return list(ddgs.text(topic, max_results=max_results))

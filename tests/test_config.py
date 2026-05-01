@@ -49,6 +49,8 @@ def test_mask_sensitive_config_redacts_private_values() -> None:
 
     assert masked["bot_token"] == "***REDACTED***"
     assert masked["providers"]["openai"]["api_key"] == "***REDACTED***"
-    assert masked["providers"]["openai"]["extra_headers"]["Authorization"] == "***REDACTED***"
+    assert (
+        masked["providers"]["openai"]["extra_headers"]["Authorization"]
+        == "***REDACTED***"
+    )
     assert masked["nested"][0]["refresh_token"] == "***REDACTED***"
-

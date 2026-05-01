@@ -1,5 +1,4 @@
 from pathlib import Path
-from typing import Optional
 
 from .discord_markdown import build_system_prompt
 
@@ -43,7 +42,7 @@ def load_abnt_reference() -> str:
 def build_abnt_messages(
     filename: str,
     document_text: str,
-    instructions: Optional[str],
+    instructions: str | None,
     document_was_truncated: bool,
     max_document_chars: int,
 ) -> list[dict[str, str]]:

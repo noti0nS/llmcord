@@ -51,4 +51,3 @@ def test_build_abnt_messages_adds_truncation_notice() -> None:
 
     assert "Instruções adicionais do usuário" in user_content
     assert "primeiros 1,500 caracteres" in user_content
-

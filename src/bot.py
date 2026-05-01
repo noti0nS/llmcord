@@ -4,7 +4,7 @@ import types
 from base64 import b64encode
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Literal, Optional
+from typing import Any, Literal
 
 import discord
 import httpx
@@ -31,11 +31,11 @@ from .prompts import build_system_prompt
 @dataclass
 class MsgNode:
     role: Literal["user", "assistant"] = "assistant"
-    text: Optional[str] = None
+    text: str | None = None
     images: list[dict[str, Any]] = field(default_factory=list)
     has_bad_attachments: bool = False
     fetch_parent_failed: bool = False
-    parent_msg: Optional[discord.Message] = None
+    parent_msg: discord.Message | None = None
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
 
 
@@ -47,7 +47,7 @@ def should_process_message(
     if message.author.bot:
         return False
 
-    if getattr(message.channel, "type", None) == discord.ChannelType.private:
+    if message.channel.type == discord.ChannelType.private:
         return True
 
     if bot_user in message.mentions:
@@ -57,11 +57,11 @@ def should_process_message(
     if reference is None:
         return False
 
-    cached_parent = getattr(reference, "cached_message", None)
+    cached_parent = reference.cached_message
     if cached_parent is not None:
-        return getattr(cached_parent, "author", None) == bot_user
+        return cached_parent.author == bot_user
 
-    parent_msg_id = getattr(reference, "message_id", None)
+    parent_msg_id = reference.message_id
     if parent_msg_id is None:
         return False
 
@@ -74,7 +74,7 @@ def user_has_permission(
     channel: Any | None,
     config: dict[str, Any],
 ) -> bool:
-    is_dm = getattr(channel, "type", None) == discord.ChannelType.private
+    is_dm = channel is not None and channel.type == discord.ChannelType.private
 
     role_ids = {role.id for role in getattr(user, "roles", ())}
     channel_ids = set(
@@ -134,7 +134,7 @@ def user_has_permission(
     return not is_bad_user and not is_bad_channel
 
 
-def create_discord_bot(initial_config: Optional[dict[str, Any]] = None) -> commands.Bot:
+def create_discord_bot(initial_config: dict[str, Any] | None = None) -> commands.Bot:
     config = initial_config or get_config()
     curr_model = next(iter(config["models"]))
     msg_nodes: dict[int, MsgNode] = {}
@@ -157,7 +157,7 @@ def create_discord_bot(initial_config: Optional[dict[str, Any]] = None) -> comma
     register_research_command(discord_bot, state)
 
     @discord_bot.event
-    async def on_ready() -> None:
+    async def on_ready() -> None:  # pyright: ignore[reportUnusedFunction]
         if client_id := state.config.get("client_id"):
             logging.info(
                 "\n\nBOT INVITE URL:\nhttps://discord.com/oauth2/authorize?client_id=%s&permissions=412317191168&scope=bot\n",
@@ -233,7 +233,8 @@ def create_discord_bot(initial_config: Optional[dict[str, Any]] = None) -> comma
                             for component in curr_msg.components
                             if component.type == discord.ComponentType.text_display
                             and isinstance(
-                                (content := getattr(component, "content", None)), str
+                                (content := getattr(component, "content", None)),
+                                str,  # type: ignore[no-any-return]
                             )
                         ]
                         + [
@@ -266,10 +267,7 @@ def create_discord_bot(initial_config: Optional[dict[str, Any]] = None) -> comma
                     )
 
                     try:
-                        is_dm = (
-                            getattr(curr_msg.channel, "type", None)
-                            == discord.ChannelType.private
-                        )
+                        is_dm = curr_msg.channel.type == discord.ChannelType.private
                         bot_mentioned = bot_user in curr_msg.mentions
                         if (
                             curr_msg.reference is None
@@ -305,15 +303,17 @@ def create_discord_bot(initial_config: Optional[dict[str, Any]] = None) -> comma
                             ):
                                 parent_msg_id = reference.message_id
                                 if parent_msg_id is not None:
-                                    curr_node.parent_msg = getattr(
-                                        reference, "cached_message", None
-                                    ) or await curr_msg.channel.fetch_message(
-                                        parent_msg_id
+                                    curr_node.parent_msg = (
+                                        reference.cached_message
+                                        or await curr_msg.channel.fetch_message(
+                                            parent_msg_id
+                                        )
                                     )
                             if isinstance(curr_msg.channel, discord.Thread):
                                 parent_is_thread_start = (
                                     curr_msg.reference is None
-                                    and getattr(curr_msg.channel.parent, "type", None)
+                                    and curr_msg.channel.parent is not None
+                                    and curr_msg.channel.parent.type
                                     == discord.ChannelType.text
                                 )
 

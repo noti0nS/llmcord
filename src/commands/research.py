@@ -2,7 +2,7 @@ import asyncio
 import logging
 import re
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any, cast
 
 import discord
 from discord.ext import commands
@@ -72,7 +72,7 @@ async def send_research_result(
         thread_name = (
             f"Pesquisa: {filename.replace('.docx', '').replace('.odt', '')[:80]}"
         )
-        thread = await channel.create_thread(
+        thread = await cast(discord.TextChannel, channel).create_thread(
             name=thread_name,
             type=discord.ChannelType.public_thread,
         )
@@ -93,7 +93,7 @@ async def send_research_result(
 
         await thread.send(
             f"📄 **Pesquisa concluída!** O documento foi dividido em {len(chunks)} partes.\n"
-            f"(O arquivo original excede o limite de tamanho do Discord, então foi enviado em mensagens.)"
+            + "(O arquivo original excede o limite de tamanho do Discord, então foi enviado em mensagens.)"
         )
 
         for i, chunk in enumerate(chunks, 1):
@@ -159,11 +159,11 @@ def register_research_command(
         interaction: discord.Interaction,
         titulo: str,
         topicos: str,
-        tipo: Optional[discord.app_commands.Choice[str]] = None,
-        pecas: Optional[str] = None,
-        profundidade: Optional[discord.app_commands.Choice[str]] = None,
-        publico: Optional[discord.app_commands.Choice[str]] = None,
-        formato: Optional[discord.app_commands.Choice[str]] = None,
+        tipo: discord.app_commands.Choice[str] | None = None,
+        pecas: str | None = None,
+        profundidade: discord.app_commands.Choice[str] | None = None,
+        publico: discord.app_commands.Choice[str] | None = None,
+        formato: discord.app_commands.Choice[str] | None = None,
     ) -> None:
         state.config = await asyncio.to_thread(get_config)
 
@@ -285,7 +285,7 @@ def register_research_command(
             )
             await interaction.followup.send(
                 "O provedor do modelo interrompeu a geração do documento. "
-                f"Detalhe do provedor: `{str(exc)[:500]}`"
+                + f"Detalhe do provedor: `{str(exc)[:500]}`"
             )
             return
         except Exception:

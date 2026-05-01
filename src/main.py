@@ -17,7 +17,9 @@ async def main() -> None:
     config = get_config()
     logging.info(
         "Loaded config:\n%s",
-        json.dumps(mask_sensitive_config(config), indent=2, sort_keys=True, ensure_ascii=False),
+        json.dumps(
+            mask_sensitive_config(config), indent=2, sort_keys=True, ensure_ascii=False
+        ),
     )
     discord_bot = create_discord_bot(config)
 
@@ -26,7 +28,7 @@ async def main() -> None:
     except discord.LoginFailure as exc:
         logging.error(
             "Discord rejected the bot token. Check config.yaml bot_token (it must be the bot token, not the client secret) "
-            "and regenerate it if needed."
+            + "and regenerate it if needed."
         )
         raise RuntimeError("Discord bot login failed.") from exc
     finally:
@@ -42,4 +44,3 @@ def run() -> None:
 
 if __name__ == "__main__":
     run()
-

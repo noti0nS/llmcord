@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from typing import Any, cast
 
 import discord
 
@@ -71,7 +72,7 @@ class _IncomingMessage:
     reference: _Reference | None = None
 
 
-def _base_permissions_config() -> dict:
+def _base_permissions_config() -> dict[str, Any]:
     return {
         "allow_dms": True,
         "permissions": {
@@ -89,7 +90,10 @@ def test_user_has_permission_respects_blocked_user() -> None:
     user = _User(id=42, roles=[])
     channel = _Channel(type=discord.ChannelType.text, id=10)
 
-    assert user_has_permission(user, channel, config) is False  # type: ignore[arg-type]
+    assert (
+        user_has_permission(cast(discord.User, cast(object, user)), channel, config)
+        is False
+    )
 
 
 def test_user_has_permission_allows_dm_when_enabled() -> None:
@@ -97,7 +101,10 @@ def test_user_has_permission_allows_dm_when_enabled() -> None:
     user = _User(id=100, roles=[])
     dm_channel = _Channel(type=discord.ChannelType.private, id=1)
 
-    assert user_has_permission(user, dm_channel, config) is True  # type: ignore[arg-type]
+    assert (
+        user_has_permission(cast(discord.User, cast(object, user)), dm_channel, config)
+        is True
+    )
 
 
 def test_should_process_message_allows_server_reply_to_bot_from_cache() -> None:
@@ -112,7 +119,14 @@ def test_should_process_message_allows_server_reply_to_bot_from_cache() -> None:
 
     msg_nodes = {parent_msg_id: MsgNode(role="assistant")}
 
-    assert should_process_message(msg, bot_user, msg_nodes) is True  # type: ignore[arg-type]
+    assert (
+        should_process_message(
+            cast(discord.Message, cast(object, msg)),
+            cast(discord.ClientUser, cast(object, bot_user)),
+            msg_nodes,
+        )
+        is True
+    )
 
 
 def test_should_process_message_rejects_server_non_reply_without_mention() -> None:
@@ -124,25 +138,50 @@ def test_should_process_message_rejects_server_non_reply_without_mention() -> No
         reference=None,
     )
 
-    assert should_process_message(msg, bot_user, {}) is False  # type: ignore[arg-type]
+    assert (
+        should_process_message(
+            cast(discord.Message, cast(object, msg)),
+            cast(discord.ClientUser, cast(object, bot_user)),
+            {},
+        )
+        is False
+    )
 
 
 def test_attachment_word_support_by_extension_and_content_type() -> None:
     assert (
         attachment_is_supported_word_document(
-            _Attachment(filename="file.docx", content_type=None)  # type: ignore[arg-type]
+            cast(
+                discord.Attachment,
+                cast(object, _Attachment(filename="file.docx", content_type=None)),
+            )
         )
         is True
     )
     assert (
         attachment_is_supported_word_document(
-            _Attachment(filename="file.bin", content_type="application/vnd.oasis.opendocument.text")  # type: ignore[arg-type]
+            cast(
+                discord.Attachment,
+                cast(
+                    object,
+                    _Attachment(
+                        filename="file.bin",
+                        content_type="application/vnd.oasis.opendocument.text",
+                    ),
+                ),
+            )
         )
         is True
     )
     assert (
         attachment_is_supported_word_document(
-            _Attachment(filename="file.pdf", content_type="application/pdf")  # type: ignore[arg-type]
+            cast(
+                discord.Attachment,
+                cast(
+                    object,
+                    _Attachment(filename="file.pdf", content_type="application/pdf"),
+                ),
+            )
         )
         is False
     )
@@ -172,7 +211,9 @@ def test_build_abnt_result_message_for_good_enough_score() -> None:
 
 
 def test_build_abnt_result_message_for_mid_score_lists_improvements() -> None:
-    message = build_abnt_result_message(0.8, ["Padronizar citacoes", "Revisar referencias"])
+    message = build_abnt_result_message(
+        0.8, ["Padronizar citacoes", "Revisar referencias"]
+    )
     assert "caminho certo" in message
     assert "- Padronizar citacoes" in message
     assert "- Revisar referencias" in message
@@ -180,7 +221,13 @@ def test_build_abnt_result_message_for_mid_score_lists_improvements() -> None:
 
 def test_get_completion_text_reads_string_content() -> None:
     completion = _Completion(
-        choices=[_CompletionChoice(message=_CompletionMessage(content="  {\"score\": 0.9, \"improvements\": []}  "))]
+        choices=[
+            _CompletionChoice(
+                message=_CompletionMessage(
+                    content='  {"score": 0.9, "improvements": []}  '
+                )
+            )
+        ]
     )
     assert get_completion_text(completion) == '{"score": 0.9, "improvements": []}'
 

@@ -1,4 +1,6 @@
 {
   "reportMissingTypeStubs": false,
   "reportUnknownMemberType": false,
+  "reportUnusedCallResult": false,
+  "reportAny": false,
 }

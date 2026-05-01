@@ -1,5 +1,3 @@
-from typing import Optional
-
 from .discord_markdown import build_system_prompt
 
 RESEARCH_SYSTEM_PROMPT = """\
@@ -59,7 +57,9 @@ def build_research_messages(
 
     # Build user prompt
     prompt_lines = []
-    prompt_lines.append(f"# INSTRUÇÃO: Produza um documento acadêmico do tipo '{tipo}' no padrão ABNT")
+    prompt_lines.append(
+        f"# INSTRUÇÃO: Produza um documento acadêmico do tipo '{tipo}' no padrão ABNT"
+    )
     prompt_lines.append("")
 
     prompt_lines.append(f"## TÍTULO: {titulo}")
@@ -86,22 +86,36 @@ def build_research_messages(
                 prompt_lines.append(f"   Resumo: {result['snippet']}")
         else:
             prompt_lines.append("⚠️ Nenhum resultado encontrado na busca web.")
-            prompt_lines.append("Gere o conteúdo desta seção com base em seu conhecimento.")
+            prompt_lines.append(
+                "Gere o conteúdo desta seção com base em seu conhecimento."
+            )
     prompt_lines.append("")
 
     prompt_lines.append("## PARÂMETROS DO DOCUMENTO")
     prompt_lines.append(f"- Tipo: {tipo}")
-    prompt_lines.append(f"- Profundidade: {profundidade} ({profundidade_desc.get(profundidade, 'análise moderada')})")
-    prompt_lines.append(f"- Público-alvo: {publico} ({publico_desc.get(publico, 'tom acadêmico')})")
+    prompt_lines.append(
+        f"- Profundidade: {profundidade} ({profundidade_desc.get(profundidade, 'análise moderada')})"
+    )
+    prompt_lines.append(
+        f"- Público-alvo: {publico} ({publico_desc.get(publico, 'tom acadêmico')})"
+    )
     prompt_lines.append("")
 
     prompt_lines.append("## INSTRUÇÕES DE FORMATAÇÃO")
-    prompt_lines.append("- Use notas de rodapé numeradas (¹, ², etc.) para todas as citações.")
-    prompt_lines.append("- Ao final, inclua uma seção 'REFERÊNCIAS' com todas as fontes no formato ABNT.")
+    prompt_lines.append(
+        "- Use notas de rodapé numeradas (¹, ², etc.) para todas as citações."
+    )
+    prompt_lines.append(
+        "- Ao final, inclua uma seção 'REFERÊNCIAS' com todas as fontes no formato ABNT."
+    )
     prompt_lines.append("- Escreva em português formal e acadêmico.")
-    prompt_lines.append(f"- Adapte o tom e a profundidade conforme o público-alvo ({publico}).")
+    prompt_lines.append(
+        f"- Adapte o tom e a profundidade conforme o público-alvo ({publico})."
+    )
     if tipo == "peca_processual":
-        prompt_lines.append("- Para peças processuais, siga estrutura jurídica adequada (cabeçalho, fatos, fundamentação, pedidos).")
+        prompt_lines.append(
+            "- Para peças processuais, siga estrutura jurídica adequada (cabeçalho, fatos, fundamentação, pedidos)."
+        )
 
     user_prompt = "\n".join(prompt_lines)[:max_document_chars]
 

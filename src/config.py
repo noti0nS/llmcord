@@ -1,4 +1,5 @@
-from typing import Any, Mapping, TypedDict
+from collections.abc import Mapping
+from typing import Any, TypedDict
 
 import yaml
 from openai import AsyncOpenAI
@@ -32,7 +33,9 @@ def mask_sensitive_config(value: Any) -> Any:
     if isinstance(value, dict):
         return {
             key: "***REDACTED***"
-            if any(keyword in str(key).lower() for keyword in _SENSITIVE_CONFIG_KEYWORDS)
+            if any(
+                keyword in str(key).lower() for keyword in _SENSITIVE_CONFIG_KEYWORDS
+            )
             else mask_sensitive_config(item)
             for key, item in value.items()
         }
@@ -97,4 +100,3 @@ def build_openai_chat_completion_kwargs(
         kwargs["max_tokens"] = max_tokens
 
     return kwargs
-

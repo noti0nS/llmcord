@@ -2,7 +2,7 @@ import asyncio
 import json
 import logging
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any
 
 import discord
 import httpx
@@ -12,7 +12,10 @@ from openai import APIError
 from ..config import build_openai_chat_completion_kwargs, get_config, get_openai_config
 from ..helpers.async_utils import await_task_with_heartbeats
 from ..helpers.content import get_completion_text
-from ..helpers.documents import attachment_is_supported_word_document, read_word_attachment
+from ..helpers.documents import (
+    attachment_is_supported_word_document,
+    read_word_attachment,
+)
 from ..llm import get_provider_error_detail
 from ..prompts import build_abnt_messages
 
@@ -90,7 +93,7 @@ def register_abnt_command(
     async def abnt_command(
         interaction: discord.Interaction,
         document: discord.Attachment,
-        instructions: Optional[str] = None,
+        instructions: str | None = None,
     ) -> None:
         state.config = await asyncio.to_thread(get_config)
 
@@ -147,7 +150,8 @@ def register_abnt_command(
             return
 
         is_dm = (
-            getattr(interaction.channel, "type", None) == discord.ChannelType.private
+            interaction.channel is not None
+            and interaction.channel.type == discord.ChannelType.private
         )
         await interaction.response.send_message(
             f"Opa! Estou analisando o documento '**{document.filename}**', {interaction.user.mention}. Um momento...",
