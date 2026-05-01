@@ -25,6 +25,7 @@ from .constants import (
     STREAMING_INDICATOR,
     VISION_MODEL_TAGS,
 )
+from .helpers.content import sanitize_discord_markdown
 from .prompts import build_system_prompt
 
 
@@ -370,15 +371,6 @@ def create_discord_bot(initial_config: dict[str, Any] | None = None) -> commands
                         if max_images > 0
                         else "⚠️ Can't see images"
                     )
-                if curr_node.has_bad_attachments:
-                    user_warnings.add("⚠️ Unsupported attachments")
-                if curr_node.fetch_parent_failed or (
-                    curr_node.parent_msg is not None and len(messages) == max_messages
-                ):
-                    user_warnings.add(
-                        f"⚠️ Only using last {len(messages)} message{'' if len(messages) == 1 else 's'}"
-                    )
-
                 curr_msg = curr_node.parent_msg
 
         logging.info(
@@ -488,13 +480,16 @@ def create_discord_bot(initial_config: dict[str, Any] | None = None) -> commands
 
                 if use_plain_responses:
                     for content in response_contents:
+                        sanitized = sanitize_discord_markdown(content)
                         await reply_helper(
-                            view=LayoutView().add_item(TextDisplay(content=content))
+                            view=LayoutView().add_item(
+                                TextDisplay(content=sanitized)
+                            )
                         )
                 else:
                     assert response_embed is not None
                     for content in response_contents:
-                        response_embed.description = content
+                        response_embed.description = sanitize_discord_markdown(content)
                         response_embed.color = EMBED_COLOR_COMPLETE
                         await reply_helper(embed=response_embed, silent=True)
             logging.info(
