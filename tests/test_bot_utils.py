@@ -4,13 +4,12 @@ import discord
 
 from src.bot import (
     MsgNode,
-    attachment_is_supported_word_document,
-    build_abnt_result_message,
-    get_completion_text,
-    parse_abnt_evaluation_json,
     should_process_message,
     user_has_permission,
 )
+from src.commands.abnt import parse_abnt_evaluation_json, build_abnt_result_message
+from src.helpers.content import get_completion_text
+from src.helpers.documents import attachment_is_supported_word_document
 
 
 @dataclass
@@ -200,4 +199,3 @@ def test_get_completion_text_reads_text_parts() -> None:
         ]
     )
     assert get_completion_text(completion) == '{"score":0.8,"improvements":["X"]}'
-

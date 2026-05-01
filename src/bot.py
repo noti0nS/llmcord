@@ -1,58 +1,32 @@
 import asyncio
-import json
 import logging
 from base64 import b64encode
 from dataclasses import dataclass, field
 from datetime import datetime
-from io import BytesIO
-from typing import Any, Literal, Optional, TypeVar
-from xml.etree import ElementTree
-from zipfile import BadZipFile, ZipFile
+from typing import Any, Literal, Optional
+import types
 
 import discord
 import httpx
-from discord.app_commands import Choice
 from discord.ext import commands
 from discord.ui import LayoutView, TextDisplay
-from openai import APIError
 
+from .commands.abnt import register_abnt_command
+from .commands.model import register_model_command
 from .config import (
     build_openai_chat_completion_kwargs,
     get_config,
     get_openai_config,
 )
-from .llm import get_provider_error_detail
-from .prompts import build_abnt_messages, build_system_prompt
-
-VISION_MODEL_TAGS = (
-    "claude",
-    "gemini",
-    "gemma",
-    "gpt-4",
-    "gpt-5",
-    "grok-4",
-    "llama",
-    "llava",
-    "mistral",
-    "o3",
-    "o4",
-    "vision",
-    "vl",
+from .constants import (
+    EMBED_COLOR_COMPLETE,
+    EMBED_COLOR_INCOMPLETE,
+    EDIT_DELAY_SECONDS,
+    MAX_MESSAGE_NODES,
+    STREAMING_INDICATOR,
+    VISION_MODEL_TAGS,
 )
-
-EMBED_COLOR_COMPLETE = discord.Color.dark_green()
-EMBED_COLOR_INCOMPLETE = discord.Color.orange()
-
-STREAMING_INDICATOR = " ⚪"
-EDIT_DELAY_SECONDS = 1
-
-MAX_MESSAGE_NODES = 500
-
-SUPPORTED_WORD_ATTACHMENT_EXTENSIONS = (".docx", ".odt")
-SUPPORTED_WORD_CONTENT_TYPES = (
-    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-    "application/vnd.oasis.opendocument.text",
-)
+from .prompts import build_system_prompt
 
 
 @dataclass
@@ -161,423 +135,30 @@ def user_has_permission(
     return not is_bad_user and not is_bad_channel
 
 
-def attachment_is_supported_word_document(attachment: discord.Attachment) -> bool:
-    content_type = attachment.content_type or ""
-    filename = attachment.filename.lower()
-    return content_type in SUPPORTED_WORD_CONTENT_TYPES or filename.endswith(
-        SUPPORTED_WORD_ATTACHMENT_EXTENSIONS
-    )
-
-
-def extract_docx_text(document_bytes: bytes) -> str:
-    try:
-        with ZipFile(BytesIO(document_bytes)) as docx:
-            document_xml = docx.read("word/document.xml")
-    except (BadZipFile, KeyError) as exc:
-        raise ValueError("invalid_docx") from exc
-
-    root = ElementTree.fromstring(document_xml)
-    namespace = {"w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"}
-    paragraphs = []
-
-    for paragraph in root.findall(".//w:body//w:p", namespace):
-        parts = []
-        for node in paragraph.iter():
-            if node.tag == f"{{{namespace['w']}}}t" and node.text:
-                parts.append(node.text)
-            elif node.tag == f"{{{namespace['w']}}}tab":
-                parts.append("\t")
-            elif node.tag in (f"{{{namespace['w']}}}br", f"{{{namespace['w']}}}cr"):
-                parts.append("\n")
-
-        text = "".join(parts).strip()
-        if text:
-            paragraphs.append(text)
-
-    return "\n\n".join(paragraphs)
-
-
-def extract_odt_text(document_bytes: bytes) -> str:
-    try:
-        with ZipFile(BytesIO(document_bytes)) as odt:
-            content_xml = odt.read("content.xml")
-    except (BadZipFile, KeyError) as exc:
-        raise ValueError("invalid_odt") from exc
-
-    root = ElementTree.fromstring(content_xml)
-    namespace = {"text": "urn:oasis:names:tc:opendocument:xmlns:text:1.0"}
-
-    paragraphs = []
-    text_tags = {f"{{{namespace['text']}}}h", f"{{{namespace['text']}}}p"}
-
-    for node in root.iter():
-        if node.tag in text_tags:
-            text = "".join(node.itertext()).strip()
-            if text:
-                paragraphs.append(text)
-
-    return "\n\n".join(paragraphs)
-
-
-async def read_word_attachment(
-    attachment: discord.Attachment, max_chars: int, http_client: httpx.AsyncClient
-) -> tuple[str, bool]:
-    if not attachment_is_supported_word_document(attachment):
-        raise ValueError("unsupported")
-
-    response = await http_client.get(attachment.url)
-    response.raise_for_status()
-
-    if attachment.filename.lower().endswith(".odt"):
-        text = extract_odt_text(response.content)
-    else:
-        text = extract_docx_text(response.content)
-
-    return text[:max_chars], len(text) > max_chars
-
-
-def get_completion_text(completion: Any) -> str:
-    if not (choice := completion.choices[0] if completion.choices else None):
-        return ""
-
-    message = getattr(choice, "message", None)
-    content = getattr(message, "content", "")
-
-    if isinstance(content, str):
-        return content.strip()
-
-    if isinstance(content, list):
-        chunks = []
-        for part in content:
-            if isinstance(part, dict):
-                if part.get("type") == "text" and isinstance(part.get("text"), str):
-                    chunks.append(part["text"])
-                continue
-
-            part_type = getattr(part, "type", None)
-            part_text = getattr(part, "text", None)
-            if part_type == "text" and isinstance(part_text, str):
-                chunks.append(part_text)
-
-        return "".join(chunks).strip()
-
-    return str(content).strip()
-
-
-def parse_abnt_evaluation_json(raw_content: str) -> tuple[float, list[str]]:
-    try:
-        payload = json.loads(raw_content)
-    except json.JSONDecodeError as exc:
-        raise ValueError("invalid_json") from exc
-
-    if not isinstance(payload, dict):
-        raise ValueError("invalid_payload")
-
-    score = payload.get("score")
-    if isinstance(score, bool) or not isinstance(score, (int, float)):
-        raise ValueError("invalid_score")
-
-    improvements = payload.get("improvements")
-    if not isinstance(improvements, list):
-        raise ValueError("invalid_improvements")
-
-    normalized_improvements = []
-    for improvement in improvements:
-        if not isinstance(improvement, str):
-            raise ValueError("invalid_improvement_item")
-
-        clean_text = improvement.strip()
-        if clean_text:
-            normalized_improvements.append(clean_text)
-
-    normalized_score = max(0.0, min(1.0, float(score)))
-    return normalized_score, normalized_improvements
-
-
-def build_abnt_result_message(score: float, improvements: list[str]) -> str:
-    score_percent = round(score * 100)
-
-    if score >= 0.9:
-        return (
-            f"Análise ABNT concluída. Pontuação: {score_percent}%.\n"
-            "Seu documento já está bom o suficiente."
-        )
-
-    if improvements:
-        improvement_lines = "\n".join(
-            f"- {improvement}" for improvement in improvements
-        )
-    else:
-        improvement_lines = "- Nenhum ponto específico foi retornado pelo avaliador."
-
-    if score >= 0.7:
-        return (
-            f"Análise ABNT concluída. Pontuação: {score_percent}%.\n"
-            "Seu documento está no caminho certo. Ajuste os pontos abaixo para melhorar ainda mais:\n"
-            f"{improvement_lines}"
-        )
-
-    return (
-        f"Análise ABNT concluída. Pontuação: {score_percent}%.\n"
-        "Seu documento precisa de revisão para atender melhor às normas ABNT. Priorize os pontos abaixo:\n"
-        f"{improvement_lines}"
-    )
-
-
-T = TypeVar("T")
-
-
-async def await_task_with_heartbeats(
-    task: asyncio.Task[T], label: str, heartbeat_seconds: float = 10.0
-) -> T:
-    started_at = datetime.now().timestamp()
-
-    while True:
-        try:
-            return await asyncio.wait_for(
-                asyncio.shield(task), timeout=heartbeat_seconds
-            )
-        except asyncio.TimeoutError:
-            logging.info(
-                "%s still running (elapsed: %.2fs)",
-                label,
-                datetime.now().timestamp() - started_at,
-            )
-
-
 def create_discord_bot(initial_config: Optional[dict[str, Any]] = None) -> commands.Bot:
     config = initial_config or get_config()
     curr_model = next(iter(config["models"]))
     msg_nodes: dict[int, MsgNode] = {}
     last_task_time = 0.0
 
+    state = types.SimpleNamespace(config=config, curr_model=curr_model)
+
     intents = discord.Intents.default()
     intents.message_content = True
     activity = discord.CustomActivity(
-        name=(config.get("status_message") or "github.com/jakobdylanc/llmcord")[:128]
+        name=(state.config.get("status_message") or "github.com/jakobdylanc/llmcord")[:128]
     )
     discord_bot = commands.Bot(
         intents=intents, activity=activity, command_prefix=commands.when_mentioned
     )
     httpx_client = httpx.AsyncClient()
 
-    @discord_bot.tree.command(
-        name="model", description="View or switch the current model"
-    )
-    async def model_command(interaction: discord.Interaction, model: str) -> None:
-        nonlocal curr_model
-        interaction_channel_type = getattr(interaction.channel, "type", None)
-
-        if model == curr_model:
-            output = f"Current model: `{curr_model}`"
-        else:
-            user_is_admin = (
-                interaction.user.id in config["permissions"]["users"]["admin_ids"]
-            )
-            if user_is_admin:
-                curr_model = model
-                output = f"Model switched to: `{model}`"
-                logging.info(output)
-            else:
-                output = "You don't have permission to change the model."
-
-        await interaction.response.send_message(
-            output, ephemeral=(interaction_channel_type == discord.ChannelType.private)
-        )
-
-    @model_command.autocomplete("model")
-    async def model_autocomplete(
-        interaction: discord.Interaction, curr_str: str
-    ) -> list[Choice[str]]:
-        del interaction
-        nonlocal config
-
-        if curr_str == "":
-            config = await asyncio.to_thread(get_config)
-
-        choices = (
-            [Choice(name=f"◉ {curr_model} (current)", value=curr_model)]
-            if curr_str.lower() in curr_model.lower()
-            else []
-        )
-        choices += [
-            Choice(name=f"○ {model_name}", value=model_name)
-            for model_name in config["models"]
-            if model_name != curr_model and curr_str.lower() in model_name.lower()
-        ]
-
-        return choices[:25]
-
-    @discord_bot.tree.command(
-        name="abnt",
-        description="Avalie um documento DOCX ou ODT conforme ABNT e receba melhorias",
-    )
-    async def abnt_command(
-        interaction: discord.Interaction,
-        document: discord.Attachment,
-        instructions: Optional[str] = None,
-    ) -> None:
-        nonlocal config
-        config = await asyncio.to_thread(get_config)
-
-        if not attachment_is_supported_word_document(document):
-            await interaction.response.send_message(
-                "Tipo de documento não suportado. Envie um arquivo `.docx` ou `.odt`.",
-                ephemeral=True,
-            )
-            return
-
-        if not user_has_permission(interaction.user, interaction.channel, config):
-            await interaction.response.send_message(
-                "Você não tem permissão para usar este bot aqui.", ephemeral=True
-            )
-            return
-
-        max_document_chars = config.get("abnt", {}).get(
-            "max_document_chars", config.get("max_text", 100000)
-        )
-        logging.info(
-            "ABNT attachment read started (user ID: %s, file: %s)",
-            interaction.user.id,
-            document.filename,
-        )
-        try:
-            document_text, document_was_truncated = await read_word_attachment(
-                document, max_document_chars, httpx_client
-            )
-        except ValueError:
-            await interaction.response.send_message(
-                "Tipo de documento não suportado. Envie um arquivo `.docx` ou `.odt`.",
-                ephemeral=True,
-            )
-            return
-        except Exception:
-            logging.exception("Error while reading ABNT attachment")
-            await interaction.response.send_message(
-                "Não consegui ler o anexo. Tente novamente com um arquivo `.docx` ou `.odt` válido.",
-                ephemeral=True,
-            )
-            return
-        logging.info(
-            "ABNT attachment read completed (user ID: %s, file: %s, chars: %s, truncated: %s)",
-            interaction.user.id,
-            document.filename,
-            len(document_text),
-            document_was_truncated,
-        )
-
-        if not document_text.strip():
-            await interaction.response.send_message(
-                "O documento anexado parece estar vazio.", ephemeral=True
-            )
-            return
-
-        is_dm = (
-            getattr(interaction.channel, "type", None) == discord.ChannelType.private
-        )
-        await interaction.response.send_message(
-            f"Opa! Estou analisando o documento '**{document.filename}**', {interaction.user.mention}. Um momento...",
-            ephemeral=is_dm,
-        )
-
-        openai_client, openai_config = get_openai_config(config, curr_model)
-
-        logging.info(
-            "ABNT command received (user ID: %s, file: %s, chars: %s)",
-            interaction.user.id,
-            document.filename,
-            len(document_text),
-        )
-
-        raw_output = ""
-        request_started_at = datetime.now().timestamp()
-        try:
-            messages = build_abnt_messages(
-                filename=document.filename,
-                document_text=document_text,
-                instructions=instructions,
-                document_was_truncated=document_was_truncated,
-                max_document_chars=max_document_chars,
-            )
-            logging.info(
-                "ABNT LLM request started (user ID: %s, model: %s, file: %s, message_count: %s)",
-                interaction.user.id,
-                openai_config["model"],
-                document.filename,
-                len(messages),
-            )
-            completion_task = asyncio.create_task(
-                openai_client.chat.completions.create(
-                    **build_openai_chat_completion_kwargs(
-                        openai_config, messages, stream=False
-                    )
-                )
-            )
-            completion = await await_task_with_heartbeats(
-                completion_task,
-                (
-                    "ABNT LLM request still running "
-                    f"(user ID: {interaction.user.id}, model: {openai_config['model']}, file: {document.filename})"
-                ),
-            )
-            elapsed = datetime.now().timestamp() - request_started_at
-            logging.info(
-                "ABNT LLM request completed (user ID: %s, model: %s, file: %s, elapsed: %.2fs)",
-                interaction.user.id,
-                openai_config["model"],
-                document.filename,
-                elapsed,
-            )
-            raw_output = get_completion_text(completion)
-            score, improvements = parse_abnt_evaluation_json(raw_output)
-            output = build_abnt_result_message(score, improvements)
-            logging.info(
-                "ABNT evaluation parsed (user ID: %s, file: %s, score: %.3f, improvements: %s)",
-                interaction.user.id,
-                document.filename,
-                score,
-                len(improvements),
-            )
-        except ValueError as exc:
-            logging.warning(
-                "ABNT evaluation JSON parse failed (user ID: %s, file: %s, reason: %s, output_preview: %s)",
-                interaction.user.id,
-                document.filename,
-                exc,
-                raw_output[:300],
-            )
-            await interaction.followup.send(
-                "Não consegui interpretar a avaliação ABNT do provedor. Tente novamente em alguns instantes."
-            )
-            return
-        except APIError as exc:
-            logging.exception(
-                "Provider error while generating ABNT response: %s",
-                get_provider_error_detail(exc),
-            )
-            await interaction.followup.send(
-                "O provedor do modelo interrompeu a avaliação ABNT. "
-                f"Detalhe do provedor: `{str(exc)[:500]}`"
-            )
-            return
-        except Exception:
-            logging.exception("Error while generating ABNT response")
-            await interaction.followup.send(
-                "Não consegui avaliar o documento em ABNT agora. Verifique os logs do provedor/modelo e tente novamente."
-            )
-            return
-
-        if not output:
-            await interaction.followup.send(
-                "Não foi possível gerar o resultado da avaliação ABNT."
-            )
-            return
-
-        await interaction.followup.send(output)
+    register_model_command(discord_bot, state)
+    register_abnt_command(discord_bot, state, httpx_client, user_has_permission)
 
     @discord_bot.event
     async def on_ready() -> None:
-        if client_id := config.get("client_id"):
+        if client_id := state.config.get("client_id"):
             logging.info(
                 "\n\nBOT INVITE URL:\nhttps://discord.com/oauth2/authorize?client_id=%s&permissions=412317191168&scope=bot\n",
                 client_id,
@@ -587,7 +168,7 @@ def create_discord_bot(initial_config: Optional[dict[str, Any]] = None) -> comma
 
     @discord_bot.event
     async def on_message(new_msg: discord.Message) -> None:
-        nonlocal last_task_time, config
+        nonlocal last_task_time
 
         bot_user = discord_bot.user
         if bot_user is None:
@@ -596,15 +177,15 @@ def create_discord_bot(initial_config: Optional[dict[str, Any]] = None) -> comma
         if not should_process_message(new_msg, bot_user, msg_nodes):
             return
 
-        config = await asyncio.to_thread(get_config)
-        if not user_has_permission(new_msg.author, new_msg.channel, config):
+        state.config = await asyncio.to_thread(get_config)
+        if not user_has_permission(new_msg.author, new_msg.channel, state.config):
             return
 
-        openai_client, openai_config = get_openai_config(config, curr_model)
-        accept_images = any(tag in curr_model.lower() for tag in VISION_MODEL_TAGS)
-        max_text = config.get("max_text", 100000)
-        max_images = config.get("max_images", 5) if accept_images else 0
-        max_messages = config.get("max_messages", 25)
+        openai_client, openai_config = get_openai_config(state.config, state.curr_model)
+        accept_images = any(tag in state.curr_model.lower() for tag in VISION_MODEL_TAGS)
+        max_text = state.config.get("max_text", 100000)
+        max_images = state.config.get("max_images", 5) if accept_images else 0
+        max_messages = state.config.get("max_messages", 25)
 
         messages = []
         user_warnings = set()
@@ -804,7 +385,7 @@ def create_discord_bot(initial_config: Optional[dict[str, Any]] = None) -> comma
         )
 
         now = datetime.now().astimezone()
-        system_prompt = (config.get("system_prompt") or "").replace(
+        system_prompt = (state.config.get("system_prompt") or "").replace(
             "{date}", now.strftime("%B %d %Y")
         ).replace("{time}", now.strftime("%H:%M:%S %Z%z"))
         messages.append(dict(role="system", content=build_system_prompt(system_prompt)))
@@ -822,7 +403,7 @@ def create_discord_bot(initial_config: Optional[dict[str, Any]] = None) -> comma
             extra_body=openai_config["extra_body"],
         )
 
-        use_plain_responses = config.get("use_plain_responses", False)
+        use_plain_responses = state.config.get("use_plain_responses", False)
         response_embed: discord.Embed | None = None
         if use_plain_responses:
             max_message_length = 4000
