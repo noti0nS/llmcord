@@ -24,14 +24,5 @@ def load_discord_markdown_reference() -> str:
 
 def build_system_prompt(base_prompt: Optional[str]) -> str:
     markdown_reference = load_discord_markdown_reference()
-    reference_intro = (
-        "Regras obrigatórias de markdown do Discord:\n"
-        "- Modo padrão: texto simples.\n"
-        "- Use somente as marcações documentadas abaixo.\n"
-        "- Não invente sintaxe de markdown que não exista no Discord.\n\n"
-        "- Em títulos com '#', use no máximo até '###'. Nunca use '####', '#####' ou '######'.\n\n"
-        "- Nunca use LaTeX/sintaxe matemática ou markdown estendido.\n\n"
-        f"{markdown_reference}"
-    )
     base = (base_prompt or "").strip()
-    return f"{base}\n\n{reference_intro}" if base else reference_intro
+    return f"{base}\n\n{markdown_reference}" if base else markdown_reference

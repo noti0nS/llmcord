@@ -3,10 +3,12 @@ from dataclasses import dataclass
 import discord
 
 from src.bot import (
+    MsgNode,
     attachment_is_supported_word_document,
     build_abnt_result_message,
     get_completion_text,
     parse_abnt_evaluation_json,
+    should_process_message,
     user_has_permission,
 )
 
@@ -51,6 +53,25 @@ class _Completion:
     choices: list[_CompletionChoice]
 
 
+@dataclass
+class _Author:
+    bot: bool
+
+
+@dataclass
+class _Reference:
+    message_id: int | None = None
+    cached_message: object | None = None
+
+
+@dataclass
+class _IncomingMessage:
+    author: _Author
+    channel: _Channel
+    mentions: list[object]
+    reference: _Reference | None = None
+
+
 def _base_permissions_config() -> dict:
     return {
         "allow_dms": True,
@@ -78,6 +99,33 @@ def test_user_has_permission_allows_dm_when_enabled() -> None:
     dm_channel = _Channel(type=discord.ChannelType.private, id=1)
 
     assert user_has_permission(user, dm_channel, config) is True
+
+
+def test_should_process_message_allows_server_reply_to_bot_from_cache() -> None:
+    bot_user = object()
+    parent_msg_id = 123
+    msg = _IncomingMessage(
+        author=_Author(bot=False),
+        channel=_Channel(type=discord.ChannelType.text, id=1),
+        mentions=[],
+        reference=_Reference(message_id=parent_msg_id),
+    )
+
+    msg_nodes = {parent_msg_id: MsgNode(role="assistant")}
+
+    assert should_process_message(msg, bot_user, msg_nodes) is True
+
+
+def test_should_process_message_rejects_server_non_reply_without_mention() -> None:
+    bot_user = object()
+    msg = _IncomingMessage(
+        author=_Author(bot=False),
+        channel=_Channel(type=discord.ChannelType.text, id=1),
+        mentions=[],
+        reference=None,
+    )
+
+    assert should_process_message(msg, bot_user, {}) is False
 
 
 def test_attachment_word_support_by_extension_and_content_type() -> None:

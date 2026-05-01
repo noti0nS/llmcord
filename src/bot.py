@@ -66,6 +66,36 @@ class MsgNode:
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
 
 
+def should_process_message(
+    message: discord.Message,
+    bot_user: discord.ClientUser,
+    msg_nodes: dict[int, MsgNode],
+) -> bool:
+    if message.author.bot:
+        return False
+
+    if getattr(message.channel, "type", None) == discord.ChannelType.private:
+        return True
+
+    if bot_user in message.mentions:
+        return True
+
+    reference = message.reference
+    if reference is None:
+        return False
+
+    cached_parent = getattr(reference, "cached_message", None)
+    if cached_parent is not None:
+        return getattr(cached_parent, "author", None) == bot_user
+
+    parent_msg_id = getattr(reference, "message_id", None)
+    if parent_msg_id is None:
+        return False
+
+    parent_node = msg_nodes.get(parent_msg_id)
+    return parent_node is not None and parent_node.role == "assistant"
+
+
 def user_has_permission(
     user: discord.User | discord.Member,
     channel: Any | None,
@@ -563,8 +593,7 @@ def create_discord_bot(initial_config: Optional[dict[str, Any]] = None) -> comma
         if bot_user is None:
             return
 
-        is_dm = new_msg.channel.type == discord.ChannelType.private
-        if (not is_dm and bot_user not in new_msg.mentions) or new_msg.author.bot:
+        if not should_process_message(new_msg, bot_user, msg_nodes):
             return
 
         config = await asyncio.to_thread(get_config)
@@ -656,9 +685,13 @@ def create_discord_bot(initial_config: Optional[dict[str, Any]] = None) -> comma
                     )
 
                     try:
+                        is_dm = (
+                            getattr(curr_msg.channel, "type", None)
+                            == discord.ChannelType.private
+                        )
+                        bot_mentioned = bot_user in curr_msg.mentions
                         if (
                             curr_msg.reference is None
-                            and bot_user.mention not in curr_msg.content
                             and (
                                 prev_msg_in_channel := (
                                     [
@@ -672,17 +705,28 @@ def create_discord_bot(initial_config: Optional[dict[str, Any]] = None) -> comma
                             )
                             and prev_msg_in_channel.type
                             in (discord.MessageType.default, discord.MessageType.reply)
-                            and prev_msg_in_channel.author
-                            == (
-                                bot_user
-                                if getattr(curr_msg.channel, "type", None)
-                                == discord.ChannelType.private
-                                else curr_msg.author
+                            and (
+                                (
+                                    not bot_mentioned
+                                    and prev_msg_in_channel.author == curr_msg.author
+                                )
+                                or (
+                                    prev_msg_in_channel.author == bot_user
+                                    and (bot_mentioned or is_dm)
+                                )
                             )
                         ):
                             curr_node.parent_msg = prev_msg_in_channel
                         else:
                             reference = curr_msg.reference
+                            if reference is not None and not isinstance(curr_msg.channel, discord.Thread):
+                                parent_msg_id = reference.message_id
+                                if parent_msg_id is not None:
+                                    curr_node.parent_msg = getattr(
+                                        reference, "cached_message", None
+                                    ) or await curr_msg.channel.fetch_message(
+                                        parent_msg_id
+                                    )
                             if isinstance(curr_msg.channel, discord.Thread):
                                 parent_is_thread_start = (
                                     curr_msg.reference is None
