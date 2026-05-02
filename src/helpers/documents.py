@@ -106,9 +106,33 @@ class OdtProcessor:
         return _run_pandoc(md, "odt")
 
 
+class MdProcessor:
+    extension: str = ".md"
+
+    def extract_text(self, document_bytes: bytes) -> str:
+        return document_bytes.decode("utf-8")
+
+    def generate(self, content: str, title: str) -> bytes:
+        md = f"# {title}\n\n{content}"
+        return md.encode("utf-8")
+
+
+class PdfProcessor:
+    extension: str = ".pdf"
+
+    def extract_text(self, document_bytes: bytes) -> str:
+        raise ValueError("pdf_extraction_not_supported")
+
+    def generate(self, content: str, title: str) -> bytes:
+        md = f"# {title}\n\n{content}"
+        return _run_pandoc(md, "pdf")
+
+
 _PROCESSORS: dict[str, type[DocumentProcessor]] = {
     "docx": DocxProcessor,
     "odt": OdtProcessor,
+    "md": MdProcessor,
+    "pdf": PdfProcessor,
 }
 
 
@@ -148,11 +172,19 @@ def _run_pandoc(markdown_text: str, output_format: str) -> bytes:
     try:
         doc = pandoc.read(source=markdown_text, format="markdown")
     except RuntimeError as exc:
+            raise RuntimeError(
+                "pandoc is required to generate documents. Install it from https://pandoc.org/installing.html"
+            ) from exc
+    try:
+        return cast(bytes, pandoc.write(doc, format=output_format))
+    except Exception as exc:
+        if output_format == "pdf":
+            raise RuntimeError(
+                "Falha ao gerar PDF. Certifique-se de que o pdflatex está instalado (https://www.latex-project.org/get/) ou escolha outro formato."
+            ) from exc
         raise RuntimeError(
-            "pandoc is required to generate documents. "
-            "Install it from https://pandoc.org/installing.html"
+            f"pandoc write failed for format '{output_format}': {exc}"
         ) from exc
-    return cast(bytes, pandoc.write(doc, format=output_format))
 
 
 def generate_document(

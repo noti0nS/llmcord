@@ -12,6 +12,7 @@ from discord.ext import commands
 from discord.ui import LayoutView, TextDisplay
 
 from .commands.abnt import register_abnt_command
+from .commands.cronograma import register_cronograma_command
 from .commands.model import register_model_command
 from .commands.research import register_research_command
 from .config import (
@@ -155,6 +156,7 @@ def create_discord_bot(initial_config: dict[str, Any] | None = None) -> commands
 
     register_model_command(discord_bot, state)
     register_abnt_command(discord_bot, state, httpx_client, user_has_permission)
+    register_cronograma_command(discord_bot, state)
     register_research_command(discord_bot, state)
 
     @discord_bot.event

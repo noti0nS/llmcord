@@ -211,7 +211,7 @@ def register_research_command(
             formato_valor,
         )
 
-        messages: list[dict[str, Any]] = build_research_messages(topic)
+        messages: list[dict[str, str]] = build_research_messages(topic)
 
         research_config = state.config.get("research", {})
         max_iterations = research_config.get("max_tool_iterations", 15)
