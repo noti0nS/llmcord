@@ -33,6 +33,7 @@ permissions:
     blocked_ids: []
 
 # LLM settings:
+hf_token:
 
 providers:
   # Remote providers:
@@ -74,7 +75,7 @@ providers:
     base_url: http://localhost:11434/v1
 
   vllm:
-    base_url: http://localhost:8000/v1
+    base_url: http://vllm:8000/v1
 
 models:
   openai/gpt-5:

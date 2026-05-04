@@ -222,5 +222,8 @@ __marimo__/
 # Codex
 .codex
 
+# Model files for local inference
+models/
+
 # Private files
 config.yaml

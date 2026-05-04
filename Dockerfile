@@ -18,7 +18,7 @@ RUN pip install --no-cache-dir uv \
     && pip install --no-cache-dir -r requirements.txt \
     && pip uninstall uv -y
 
-COPY llmcrd.py .
+COPY llmcord.py .
 COPY src/ src/
 
-CMD ["python", "llmcrd.py"]
+CMD ["python", "llmcord.py"]
