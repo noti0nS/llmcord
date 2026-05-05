@@ -227,3 +227,4 @@ models/
 
 # Private files
 config.yaml
+data/

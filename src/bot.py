@@ -13,6 +13,7 @@ from discord.ui import LayoutView, TextDisplay
 
 from .commands.abnt import register_abnt_command
 from .commands.cronograma import register_cronograma_command
+from .helpers.status_scheduler import start_status_scheduler
 from .commands.model import register_model_command
 from .commands.pesquisa import register_pesquisa_command
 from .config import (
@@ -168,6 +169,8 @@ def create_discord_bot(initial_config: dict[str, Any] | None = None) -> commands
             )
 
         await discord_bot.tree.sync()
+
+        start_status_scheduler(discord_bot)
 
     @discord_bot.event
     async def on_message(new_msg: discord.Message) -> None:

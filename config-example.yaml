@@ -18,6 +18,12 @@ cronograma:
   days_before_test: 3
   default_hours_per_day: 4
 
+status:
+  enabled: true
+  model: openai/gpt-4o-mini
+  interval_hours: 24
+  max_history: 100
+
 permissions:
   users:
     admin_ids: []

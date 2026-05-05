@@ -4,3 +4,7 @@ services:
     restart: unless-stopped
     volumes:
       - ./:/app:ro
+      - status_data:/app/data
+
+volumes:
+  status_data:
