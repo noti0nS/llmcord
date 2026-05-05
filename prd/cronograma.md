@@ -72,7 +72,7 @@ On timeout:
 
 ### LLM prompt design
 
-Prompt built in `src/prompts/cronograma.py` following the `abnt.py` / `research.py` pattern.
+Prompt built in `src/prompts/cronograma.py` following the `abnt.py` / `pesquisa.py` pattern.
 
 #### System prompt
 
@@ -120,7 +120,7 @@ The date list is pre-filtered to the user's selected weekdays. Only matching dat
 
 ### LLM call pattern
 
-Follow the `research.py` pattern (non-streaming completions with `await_task_with_heartbeats`):
+Follow the `pesquisa.py` pattern (non-streaming completions with `await_task_with_heartbeats`):
 
 1. Build messages via `build_cronograma_messages(test_date, subjects, hours_per_day, instructions, selected_weekdays, calendar_dates)`.
 2. Call `openai_client.chat.completions.create(**build_openai_chat_completion_kwargs(openai_config, messages, stream=False))`.

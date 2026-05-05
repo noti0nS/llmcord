@@ -40,7 +40,7 @@ graph TD
 - `src/config.py:12-16` extracts Discord bot token.
 - `src/config.py:19-40` handles OpenAI client instantiation and request config merging.
 - `src/prompts/abnt.py` defines ABNT prompts, loads `abnt_reference.md`, and builds `build_abnt_messages()`.
-- `src/llm.py:8-55` streams LLM responses to Discord and formats provider errors.
+- `src/helpers/llm.py:8-55` streams LLM responses to Discord and formats provider errors.
 - `src/bot.py:25-27` defines `MsgNode`, the cache structure for conversation reconstruction.
 - `src/bot.py:67-113` defines `user_has_permission()` and attachment/document parsing helpers.
 - `src/bot.py:219-985` contains `create_discord_bot()` factory which registers all event handlers and slash commands.
@@ -60,8 +60,8 @@ graph TD
     E --> F["Permission check<br/>src/bot.py:user_has_permission()"]
     F --> G["Conversation rebuild<br/>src/bot.py:on_message()"]
     G --> H["Model and provider selection<br/>src/config.py:get_openai_config()"]
-    H --> I["OpenAI-compatible request<br/>src/llm.py"]
-    I --> J["Streamed response<br/>src/llm.py:stream_completion_to_channel()"]
+    H --> I["OpenAI-compatible request<br/>src/helpers/llm.py"]
+    I --> J["Streamed response<br/>src/helpers/llm.py:stream_completion_to_channel()"]
 ```
 
 ### Current building blocks
@@ -70,7 +70,7 @@ graph TD
 - **Config layer**: `src/config.py` loads and manages YAML configuration.
 - **Discord layer**: `src/bot.py` handles events, slash commands, and replies via `create_discord_bot()` factory.
 - **Prompts layer**: `src/prompts/abnt.py` contains ABNT-specific prompt construction and ABNT markdown reference loading.
-- **LLM layer**: `src/llm.py` abstracts streaming responses and provider error handling.
+- **LLM layer**: `src/helpers/llm.py` abstracts streaming responses and provider error handling.
 - **Context layer**: message history is reconstructed in `src/bot.py:on_message()` from replies, threads, and nearby messages.
 - **Attachment layer**: text and image attachments are fetched with `httpx` (in `src/bot.py`).
 - **Cache layer**: `msg_nodes` stores message state in memory (managed in `src/bot.py`).
@@ -249,7 +249,7 @@ The current modular structure is:
 - `src/main.py`: process entry and async bootstrap.
 - `src/config.py`: configuration and provider setup.
 - `src/prompts/abnt.py`: prompt templates/builders and ABNT reference loading.
-- `src/llm.py`: LLM communication and streaming.
+- `src/helpers/llm.py`: LLM communication and streaming.
 - `src/bot.py`: Discord events, commands, and bot factory.
 - `tests/`: pytest unit tests.
 

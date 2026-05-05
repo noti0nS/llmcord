@@ -12,7 +12,7 @@ from odf.text import H, P
 import discord
 import httpx
 
-from ..constants import (
+from .ui import (
     SUPPORTED_WORD_ATTACHMENT_EXTENSIONS,
     SUPPORTED_WORD_CONTENT_TYPES,
 )
@@ -62,7 +62,14 @@ class DocxProcessor:
             normal.paragraph_format.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY  # pyright: ignore[reportAttributeAccessIssue]
             normal.paragraph_format.line_spacing = 1.5  # pyright: ignore[reportAttributeAccessIssue]
 
-        for name in ("Heading 1", "Heading 2", "Heading 3", "heading 1", "heading 2", "heading 3"):
+        for name in (
+            "Heading 1",
+            "Heading 2",
+            "Heading 3",
+            "heading 1",
+            "heading 2",
+            "heading 3",
+        ):
             try:
                 heading = doc.styles[name]
             except KeyError:
@@ -172,9 +179,9 @@ def _run_pandoc(markdown_text: str, output_format: str) -> bytes:
     try:
         doc = pandoc.read(source=markdown_text, format="markdown")
     except RuntimeError as exc:
-            raise RuntimeError(
-                "pandoc is required to generate documents. Install it from https://pandoc.org/installing.html"
-            ) from exc
+        raise RuntimeError(
+            "pandoc is required to generate documents. Install it from https://pandoc.org/installing.html"
+        ) from exc
     try:
         return cast(bytes, pandoc.write(doc, format=output_format))
     except Exception as exc:

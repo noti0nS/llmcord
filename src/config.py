@@ -7,6 +7,8 @@ from openai import AsyncOpenAI
 
 class OpenAIRequestConfig(TypedDict):
     model: str
+    provider: str
+    base_url: str
     extra_headers: Mapping[str, str] | None
     extra_query: Mapping[str, str] | None
     extra_body: Mapping[str, Any] | None
@@ -71,10 +73,21 @@ def get_openai_config(
 
     return openai_client, {
         "model": model,
+        "provider": provider,
+        "base_url": provider_config["base_url"],
         "extra_headers": provider_config.get("extra_headers"),
         "extra_query": provider_config.get("extra_query"),
         "extra_body": extra_body,
     }
+
+
+def _needs_deepseek_reasoning(openai_config: OpenAIRequestConfig) -> bool:
+    provider = openai_config.get("provider", "").lower()
+    model = openai_config.get("model", "").lower()
+    base_url = openai_config.get("base_url", "").lower()
+    return (
+        provider == "deepseek" or "deepseek" in model or "api.deepseek.com" in base_url
+    )
 
 
 def build_openai_chat_completion_kwargs(
@@ -86,6 +99,11 @@ def build_openai_chat_completion_kwargs(
     tools: list[dict[str, Any]] | None = None,
     tool_choice: str | dict[str, Any] | None = None,
 ) -> dict[str, Any]:
+    if _needs_deepseek_reasoning(openai_config):
+        for msg in messages:
+            if msg.get("role") == "assistant" and "reasoning_content" not in msg:
+                msg["reasoning_content"] = ""
+
     kwargs: dict[str, Any] = {
         "model": openai_config["model"],
         "messages": messages,

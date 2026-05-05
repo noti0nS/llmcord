@@ -1,4 +1,4 @@
-# PRD: `/research` Command — Academic Legal Research Generator
+# PRD: `/pesquisa` Command — Academic Legal Research Generator
 
 ## 1. Overview
 
@@ -43,15 +43,15 @@ This is time-consuming and error-prone. Students would benefit from an automated
 ## 4. Functional Requirements
 
 ### FR-01: Command Interface
-- **Input**: Slash command `/research` with arguments:
+- **Input**: Slash command `/pesquisa` with arguments:
   - `topic` (string, required): Free-text description of the research. The user describes what they need in natural language — subject, document type, depth, audience, specific topics, document pieces, etc. The LLM interprets this autonomously.
   - `format` (string, optional): `"docx"` or `"odt"`, default `"docx"`
 - **Example invocations**:
   ```
-  /research topic: Preciso de uma monografia sobre alvará judicial no TJSP.
+  /pesquisa topic: Preciso de uma monografia sobre alvará judicial no TJSP.
   Quero algo aprofundado para professor. Pesquise o regimento do tribunal.
 
-  /research topic: NPJ
+  /pesquisa topic: NPJ
   Pesquisa: regimento do tribunal
   Pesquisa: Contestação
   3 peças: petição inicial, contestação, contestação com reconvenção
@@ -146,10 +146,10 @@ This is time-consuming and error-prone. Students would benefit from an automated
 ```
 src/
 ├── commands/
-│   ├── research.py      # /research command + tool loop
+│   ├── pesquisa.py      # /pesquisa command + tool loop
 │   └── ...
 ├── prompts/
-│   ├── research.py      # System prompt for tool-aware document generation
+│   ├── pesquisa.py      # System prompt for tool-aware document generation
 │   └── ...
 ├── helpers/
 │   ├── documents.py     # DOCX/ODT generation helpers
@@ -171,7 +171,7 @@ User free text → LLM (system prompt + web_search tool definition)
                     ↓
               generate_document() → DOCX/ODT bytes
                     ↓
-              send_research_result() → file attachment or thread
+              send_pesquisa_result() → file attachment or thread
 ```
 
 ---
@@ -195,7 +195,7 @@ User free text → LLM (system prompt + web_search tool definition)
 
 ## 8. Success Metrics
 
-- `/research` command responds within 5 minutes
+- `/pesquisa` command responds within 5 minutes
 - Generated documents contain proper ABNT footnote citations
 - LLM autonomously searches for relevant sources without manual topic input
 - Output files are editable in Microsoft Word and LibreOffice
@@ -217,7 +217,7 @@ User free text → LLM (system prompt + web_search tool definition)
 
 ## 10. Dependencies on Other Features
 
-- `/research` is a standalone command (does not require task routing).
+- `/pesquisa` is a standalone command (does not require task routing).
 - Relies on `src/helpers/search.py` for DuckDuckGo searches.
 - Relies on `src/helpers/documents.py` for file generation.
 - Requires OpenAI function calling support from the configured provider/model.

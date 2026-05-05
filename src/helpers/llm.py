@@ -4,7 +4,7 @@ from typing import Any
 import discord
 from openai import APIError, AsyncOpenAI
 
-from .config import OpenAIRequestConfig, build_openai_chat_completion_kwargs
+from ..config import OpenAIRequestConfig, build_openai_chat_completion_kwargs
 
 
 async def stream_completion_to_channel(
@@ -39,7 +39,7 @@ async def stream_completion_to_channel(
         finish_reason = choice.finish_reason
         new_content = choice.delta.content or ""
 
-        if pending_content == "" and new_content == "":
+        if pending_content == "" and new_content == "" and finish_reason is None:
             continue
 
         pending_content += new_content

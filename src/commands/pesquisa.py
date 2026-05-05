@@ -13,9 +13,9 @@ from ..config import build_openai_chat_completion_kwargs, get_config, get_openai
 from ..helpers.async_utils import await_task_with_heartbeats
 from ..helpers.content import get_completion_text
 from ..helpers.documents import generate_document
+from ..helpers.llm import get_provider_error_detail
 from ..helpers.search import fetch_page_content, search_topics
-from ..llm import get_provider_error_detail
-from ..prompts.research import build_research_messages
+from ..prompts.pesquisa import build_pesquisa_messages
 
 WEB_SEARCH_TOOL: list[dict[str, Any]] = [
     {
@@ -67,7 +67,7 @@ FETCH_PAGE_TOOL: list[dict[str, Any]] = [
     }
 ]
 
-ALL_RESEARCH_TOOLS = WEB_SEARCH_TOOL + FETCH_PAGE_TOOL
+ALL_PESQUISA_TOOLS = WEB_SEARCH_TOOL + FETCH_PAGE_TOOL
 
 FORMATO_CHOICES = [
     discord.app_commands.Choice(name="DOCX (Microsoft Word)", value="docx"),
@@ -75,7 +75,7 @@ FORMATO_CHOICES = [
 ]
 
 
-def build_research_filename(title: str, output_format: str) -> str:
+def build_pesquisa_filename(title: str, output_format: str) -> str:
     safe_title = re.sub(r"[^\w\s-]", "", title).strip()[:50]
     safe_title = re.sub(r"[-\s]+", "_", safe_title)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -83,7 +83,7 @@ def build_research_filename(title: str, output_format: str) -> str:
     return f"pesquisa_{safe_title}_{timestamp}{ext}"
 
 
-async def send_research_result(
+async def send_pesquisa_result(
     interaction: discord.Interaction,
     content: str,
     filename: str,
@@ -131,7 +131,7 @@ async def send_research_result(
             chunks.append(current_chunk)
 
         await thread.send(
-            f"📄 **Pesquisa concluída!** O documento foi dividido em {len(chunks)} partes.\n"
+            f"**Pesquisa concluída!** O documento foi dividido em {len(chunks)} partes.\n"
             + "(O arquivo original excede o limite de tamanho do Discord, então foi enviado em mensagens.)"
         )
 
@@ -167,12 +167,12 @@ def _format_search_results(results: list[dict[str, Any]]) -> str:
     return json.dumps(formatted, ensure_ascii=False)
 
 
-def register_research_command(
+def register_pesquisa_command(
     discord_bot: commands.Bot,
     state: Any,
 ) -> None:
     @discord_bot.tree.command(
-        name="research",
+        name="pesquisa",
         description="Gere um documento acadêmico ABNT a partir de uma descrição de pesquisa",
     )
     @discord.app_commands.describe(
@@ -182,7 +182,7 @@ def register_research_command(
     @discord.app_commands.choices(
         format=FORMATO_CHOICES,
     )
-    async def research_command(  # pyright: ignore[reportUnusedFunction]
+    async def pesquisa_command(  # pyright: ignore[reportUnusedFunction]
         interaction: discord.Interaction,
         topic: str,
         format: discord.app_commands.Choice[str] | None = None,
@@ -200,18 +200,18 @@ def register_research_command(
             return
 
         await interaction.response.send_message(
-            "🔍 Pesquisando e gerando o documento... Isso pode levar alguns minutos.",
+            "Pesquisando e gerando o documento... Isso pode levar alguns minutos.",
             ephemeral=True,
         )
 
         logging.info(
-            "Research started (user ID: %s, topic_len: %s, formato: %s)",
+            "Pesquisa started (user ID: %s, topic_len: %s, formato: %s)",
             interaction.user.id,
             len(topic),
             formato_valor,
         )
 
-        messages: list[dict[str, str]] = build_research_messages(topic)
+        messages: list[dict[str, Any]] = build_pesquisa_messages(topic)
 
         research_config = state.config.get("research", {})
         max_iterations = research_config.get("max_tool_iterations", 15)
@@ -227,7 +227,7 @@ def register_research_command(
         try:
             for iteration in range(max_iterations):
                 logging.info(
-                    "Research LLM iteration %s/%s (user ID: %s, model: %s)",
+                    "Pesquisa LLM iteration %s/%s (user ID: %s, model: %s)",
                     iteration + 1,
                     max_iterations,
                     interaction.user.id,
@@ -240,14 +240,14 @@ def register_research_command(
                             openai_config,
                             messages,
                             stream=False,
-                            tools=ALL_RESEARCH_TOOLS,
+                            tools=ALL_PESQUISA_TOOLS,
                         )
                     )
                 )
                 completion = await await_task_with_heartbeats(
                     completion_task,
                     (
-                        "Research LLM request still running "
+                        "Pesquisa LLM request still running "
                         f"(user ID: {interaction.user.id}, "
                         f"model: {openai_config['model']})"
                     ),
@@ -271,7 +271,7 @@ def register_research_command(
                         for tc in tool_calls
                     ]
                     logging.info(
-                        "Research tool calls requested (user ID: %s): %s",
+                        "Pesquisa tool calls requested (user ID: %s): %s",
                         interaction.user.id,
                         "; ".join(tool_summary),
                     )
@@ -300,7 +300,7 @@ def register_research_command(
 
                             query = args.get("query", "")
                             logging.info(
-                                "Research web_search (user ID: %s, query: %s)",
+                                "Pesquisa web_search (user ID: %s, query: %s)",
                                 interaction.user.id,
                                 query,
                             )
@@ -313,7 +313,7 @@ def register_research_command(
                                 search_data = results.get(query, [])
                             except Exception:
                                 logging.exception(
-                                    "Research web search failed for query: %s",
+                                    "Pesquisa web search failed for query: %s",
                                     query,
                                 )
                                 search_data = []
@@ -354,7 +354,7 @@ def register_research_command(
 
                             url = args.get("url", "")
                             logging.info(
-                                "Research fetch_page (user ID: %s, url: %s)",
+                                "Pesquisa fetch_page (user ID: %s, url: %s)",
                                 interaction.user.id,
                                 url,
                             )
@@ -394,7 +394,7 @@ def register_research_command(
                 # Handle length (max_tokens reached)
                 if choice.finish_reason == "length":
                     logging.warning(
-                        "Research LLM reached max_tokens (user ID: %s)",
+                        "Pesquisa LLM reached max_tokens (user ID: %s)",
                         interaction.user.id,
                     )
                     raw_output = get_completion_text(completion)
@@ -403,7 +403,7 @@ def register_research_command(
                 # Handle content_filter
                 if choice.finish_reason == "content_filter":
                     logging.error(
-                        "Research LLM content filter triggered (user ID: %s)",
+                        "Pesquisa LLM content filter triggered (user ID: %s)",
                         interaction.user.id,
                     )
                     await interaction.followup.send(
@@ -419,7 +419,7 @@ def register_research_command(
             # If loop exhausted without content, force final generation
             if not raw_output.strip():
                 logging.warning(
-                    "Research tool loop exhausted, forcing final generation (user ID: %s)",
+                    "Pesquisa tool loop exhausted, forcing final generation (user ID: %s)",
                     interaction.user.id,
                 )
                 force_task = asyncio.create_task(
@@ -434,13 +434,13 @@ def register_research_command(
                 )
                 force_completion = await await_task_with_heartbeats(
                     force_task,
-                    "Research final generation still running",
+                    "Pesquisa final generation still running",
                 )
                 raw_output = get_completion_text(force_completion)
 
             elapsed = datetime.now().timestamp() - request_started_at
             logging.info(
-                "Research LLM request completed (user ID: %s, model: %s, elapsed: %.2fs)",
+                "Pesquisa LLM request completed (user ID: %s, model: %s, elapsed: %.2fs)",
                 interaction.user.id,
                 openai_config["model"],
                 elapsed,
@@ -448,7 +448,7 @@ def register_research_command(
 
         except APIError as exc:
             logging.exception(
-                "Provider error while generating research: %s",
+                "Provider error while generating pesquisa: %s",
                 get_provider_error_detail(exc),
             )
             await interaction.followup.send(
@@ -457,7 +457,7 @@ def register_research_command(
             )
             return
         except Exception:
-            logging.exception("Error while generating research document")
+            logging.exception("Error while generating pesquisa document")
             await interaction.followup.send(
                 "Não consegui gerar o documento de pesquisa agora. "
                 + "Verifique os logs e tente novamente."
@@ -473,14 +473,14 @@ def register_research_command(
         # Generate document file
         try:
             file_bytes, _ = generate_document(raw_output, topic, formato_valor)
-            filename = build_research_filename(topic, formato_valor)
+            filename = build_pesquisa_filename(topic, formato_valor)
         except Exception:
             logging.exception("Error while generating document file")
             await interaction.followup.send(
                 "Não consegui gerar o arquivo do documento. "
                 + "O conteúdo será enviado em mensagens."
             )
-            await send_research_result(interaction, raw_output, "pesquisa.txt", b"")
+            await send_pesquisa_result(interaction, raw_output, "pesquisa.txt", b"")
             return
 
-        await send_research_result(interaction, raw_output, filename, file_bytes)
+        await send_pesquisa_result(interaction, raw_output, filename, file_bytes)

@@ -16,7 +16,7 @@ from ..helpers.documents import (
     attachment_is_supported_word_document,
     read_word_attachment,
 )
-from ..llm import get_provider_error_detail
+from ..helpers.llm import get_provider_error_detail
 from ..prompts import build_abnt_messages
 
 
@@ -90,7 +90,7 @@ def register_abnt_command(
         name="abnt",
         description="Avalie um documento DOCX ou ODT conforme ABNT e receba melhorias",
     )
-    async def abnt_command(
+    async def abnt_command(  # pyright: ignore[reportUnusedFunction]
         interaction: discord.Interaction,
         document: discord.Attachment,
         instructions: str | None = None,

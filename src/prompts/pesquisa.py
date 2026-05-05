@@ -1,6 +1,8 @@
+from typing import Any
+
 from .abnt import load_abnt_reference
 
-RESEARCH_SYSTEM_PROMPT = """\
+PESQUISA_SYSTEM_PROMPT = """\
 Você é um assistente acadêmico especializado em Direito para o NPJ (Núcleo de Prática Jurídica). Sua função é produzir documentos acadêmicos completos no padrão ABNT.
 
 Você tem acesso a duas ferramentas:
@@ -26,14 +28,14 @@ Estruturas sugeridas:
 """
 
 
-def build_research_messages(topic: str) -> list[dict[str, str]]:
-    """Build the initial messages for the LLM to generate a research document.
+def build_pesquisa_messages(topic: str) -> list[dict[str, Any]]:
+    """Build the initial messages for the LLM to generate a pesquisa document.
 
     Args:
         topic: Free-text description of the research from the user.
     """
     abnt_reference = load_abnt_reference()
-    system_prompt = f"{RESEARCH_SYSTEM_PROMPT}\n\n## DIRETRIZES OBRIGATÓRIAS DE FORMATAÇÃO ABNT\n\n{abnt_reference}"
+    system_prompt = f"{PESQUISA_SYSTEM_PROMPT}\n\n## DIRETRIZES OBRIGATÓRIAS DE FORMATAÇÃO ABNT\n\n{abnt_reference}"
 
     return [
         dict(role="system", content=system_prompt),

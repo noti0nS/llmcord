@@ -19,8 +19,18 @@ Responda APENAS com o cronograma — sem introduções, sem "claro!", sem coment
 """
 
 _MONTHS_PT = (
-    "Jan", "Fev", "Mar", "Abr", "Mai", "Jun",
-    "Jul", "Ago", "Set", "Out", "Nov", "Dez",
+    "Jan",
+    "Fev",
+    "Mar",
+    "Abr",
+    "Mai",
+    "Jun",
+    "Jul",
+    "Ago",
+    "Set",
+    "Out",
+    "Nov",
+    "Dez",
 )
 
 _WEEKDAY_NAMES = {
@@ -35,7 +45,9 @@ _WEEKDAY_NAMES = {
 
 
 def format_date_pt(d: date) -> str:
-    return f"{_WEEKDAY_NAMES[d.weekday()]} {d.day:02d}/{_MONTHS_PT[d.month - 1]}/{d.year}"
+    return (
+        f"{_WEEKDAY_NAMES[d.weekday()]} {d.day:02d}/{_MONTHS_PT[d.month - 1]}/{d.year}"
+    )
 
 
 def build_cronograma_messages(

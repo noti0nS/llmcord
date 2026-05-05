@@ -23,10 +23,9 @@ uv run python llmcord.py               # run the bot
 |---|---|
 | `src/bot.py` | Core bot: message routing, reply chains, LLM streaming |
 | `src/config.py` | YAML config loading, OpenAI client factory, config masking |
-| `src/commands/` | Slash commands: `/model`, `/abnt`, `/research` |
+| `src/commands/` | Slash commands: `/model`, `/abnt`, `/pesquisa`, `/cronograma` |
 | `src/prompts/` | System prompts + markdown reference files loaded at runtime |
-| `src/helpers/` | Async heartbeat, content parsing, DOCX/ODT I/O, web search |
-| `src/llm.py` | Generic streaming helper used by commands |
+| `src/helpers/` | Async heartbeat, content parsing, DOCX/ODT I/O, web search, UI, LLM |
 
 ## Key invariants
 
@@ -60,4 +59,4 @@ uv run python llmcord.py               # run the bot
 
 - `/model <name>` — switch LLM model (admin only per `permissions.users.admin_ids`). Autocomplete reloads config on empty input.
 - `/abnt <doc> [instructions]` — evaluate `.docx`/`.odt` for ABNT compliance. Returns structured JSON then reformats into a user message.
-- `/research` — web search + LLM document generation. Uses DuckDuckGo. Supports depth/audience/format options.
+- `/pesquisa` — web search + LLM document generation. Uses DuckDuckGo. Supports depth/audience/format options.

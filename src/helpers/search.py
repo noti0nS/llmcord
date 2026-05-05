@@ -9,7 +9,7 @@ import httpx
 try:
     import ddgs
 except ImportError as exc:  # pragma: no cover
-    raise RuntimeError("ddgs is required for /research") from exc
+    raise RuntimeError("ddgs is required for /pesquisa") from exc
 
 
 async def search_topics(

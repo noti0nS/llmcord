@@ -14,13 +14,13 @@ from discord.ui import LayoutView, TextDisplay
 from .commands.abnt import register_abnt_command
 from .commands.cronograma import register_cronograma_command
 from .commands.model import register_model_command
-from .commands.research import register_research_command
+from .commands.pesquisa import register_pesquisa_command
 from .config import (
     build_openai_chat_completion_kwargs,
     get_config,
     get_openai_config,
 )
-from .constants import (
+from .helpers.ui import (
     EMBED_COLOR_COMPLETE,
     MAX_MESSAGE_NODES,
     STREAMING_INDICATOR,
@@ -157,7 +157,7 @@ def create_discord_bot(initial_config: dict[str, Any] | None = None) -> commands
     register_model_command(discord_bot, state)
     register_abnt_command(discord_bot, state, httpx_client, user_has_permission)
     register_cronograma_command(discord_bot, state)
-    register_research_command(discord_bot, state)
+    register_pesquisa_command(discord_bot, state)
 
     @discord_bot.event
     async def on_ready() -> None:  # pyright: ignore[reportUnusedFunction]
@@ -484,16 +484,14 @@ def create_discord_bot(initial_config: dict[str, Any] | None = None) -> commands
                     for content in response_contents:
                         sanitized = sanitize_discord_markdown(content)
                         await reply_helper(
-                            view=LayoutView().add_item(
-                                TextDisplay(content=sanitized)
-                            )
+                            view=LayoutView().add_item(TextDisplay(content=sanitized))
                         )
                 else:
                     assert response_embed is not None
                     for content in response_contents:
                         response_embed.description = sanitize_discord_markdown(content)
                         response_embed.color = EMBED_COLOR_COMPLETE
-                        await reply_helper(embed=response_embed, silent=True)
+                        await reply_helper(embed=response_embed)
             logging.info(
                 "LLM streaming request completed (user ID: %s, model: %s, finish_reason: %s, chunks: %s, elapsed: %.2fs)",
                 new_msg.author.id,

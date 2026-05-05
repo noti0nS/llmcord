@@ -288,7 +288,10 @@ def test_horizontal_rule_with_spaces():
 
 
 def test_plain_text_with_special_chars():
-    assert sanitize_discord_markdown("Hello, world! 2 + 2 = 4.") == "Hello, world! 2 + 2 = 4."
+    assert (
+        sanitize_discord_markdown("Hello, world! 2 + 2 = 4.")
+        == "Hello, world! 2 + 2 = 4."
+    )
 
 
 def test_allowed_blockquote_triple_arrow():

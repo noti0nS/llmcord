@@ -9,7 +9,7 @@ description: >
 
 ## When to Run
 
-Use this skill when asked to create a new PRD (or update an existing one) for any llmcord slash command. The canonical templates live at `prd/cronograma.md` and `prd/research.md` — study both before writing.
+Use this skill when asked to create a new PRD (or update an existing one) for any llmcord slash command. The canonical templates live at `prd/cronograma.md` and `prd/pesquisa.md` — study both before writing.
 
 ## PRD Structure (ordered, all sections required)
 
@@ -114,9 +114,9 @@ Bulleted list of test cases. Each is a function name + 1-line description. Mirro
 ## Writing Rules
 
 - **Match the codebase's language**: If the bot speaks Portuguese, the PRD's user-facing strings and command descriptions should be in Portuguese. Technical sections stay in English or mirror existing PRDs.
-- **Use existing imports and helpers**: Reference `src/helpers/*`, `src/config.py`, `src/llm.py`, `src/prompts/*` — don't invent new utility modules unless the feature truly needs one.
+- **Use existing imports and helpers**: Reference `src/helpers/*`, `src/config.py`, `src/helpers/llm.py`, `src/prompts/*` — don't invent new utility modules unless the feature truly needs one.
 - **Config is hot-reloaded**: Every PRD must mention that config is fetched via `await asyncio.to_thread(get_config)` on each invocation (no caching).
-- **Follow the LLM call pattern from research.py**: Non-streaming with `await_task_with_heartbeats`. If streaming, explain why.
+- **Follow the LLM call pattern from pesquisa.py**: Non-streaming with `await_task_with_heartbeats`. If streaming, explain why.
 - **Discord constraints**: Select menus max 25 options, labels ≤100 chars, values ≤100 chars. Message content ≤2000 chars (plain) or ≤4096 (embed description). File attachments ≤8MB (Discord) or 25MB (Nitro).
 - **Permissions model**: Check `user_has_permission()` if the command requires gating.
 - **No new dependencies without justification**: If a new pip package is needed, add it to `pyproject.toml` in the Files table.

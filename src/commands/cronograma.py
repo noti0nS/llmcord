@@ -2,7 +2,7 @@ import asyncio
 import logging
 from datetime import date, datetime, timedelta
 from io import BytesIO
-from typing import Any, final, override
+from typing import Any, cast, final, override
 
 import discord
 from discord.ext import commands
@@ -15,7 +15,7 @@ from ..config import (
     get_openai_config,
 )
 from ..helpers.documents import generate_document
-from ..llm import get_provider_error_detail
+from ..helpers.llm import get_provider_error_detail
 from ..prompts.cronograma import build_cronograma_messages, format_date_pt
 
 WEEKDAY_OPTIONS: list[discord.app_commands.Choice[str]] = [
@@ -90,13 +90,13 @@ def _compute_study_window(
 
 
 async def _generate_cronograma_content(
-    thread: discord.Thread,
+    msg_target: discord.abc.Messageable,
     openai_client: Any,
     openai_config: OpenAIRequestConfig,
     messages: list[dict[str, str]],
     user_id: int,
 ) -> str | None:
-    """Stream cronograma progress into the thread and return the full content."""
+    """Stream cronograma progress into the channel/thread and return the full content."""
     max_message_length = 2000
     response_chunks: list[str] = []
     finish_reason = None
@@ -160,21 +160,23 @@ async def _generate_cronograma_content(
             "Provider error while streaming cronograma: %s",
             get_provider_error_detail(exc),
         )
-        await thread.send(
+        await msg_target.send(
             f"O provedor do modelo interrompeu a geração. Detalhe: `{str(exc)[:500]}`"
         )
         return None
     except Exception:
         logging.exception("Error while streaming cronograma")
-        await thread.send("Não consegui gerar o cronograma agora. Verifique os logs.")
+        await msg_target.send(
+            "Não consegui gerar o cronograma agora. Verifique os logs."
+        )
         return None
 
     if not response_chunks:
-        await thread.send("Não foi possível gerar o cronograma.")
+        await msg_target.send("Não foi possível gerar o cronograma.")
         return None
 
     for content in response_chunks:
-        await thread.send(content)
+        await msg_target.send(content)
 
     return "".join(response_chunks)
 
@@ -202,7 +204,7 @@ class WeekdaySelectView(discord.ui.View):
     def __init__(
         self,
         *,
-        thread: discord.Thread,
+        msg_target: discord.abc.Messageable,
         state: Any,
         test_date: date,
         subjects: str,
@@ -210,7 +212,7 @@ class WeekdaySelectView(discord.ui.View):
         instructions: str | None,
     ) -> None:
         super().__init__(timeout=None)
-        self._thread = thread
+        self._msg_target = msg_target
         self._state = state
         self._test_date = test_date
         self._subjects = subjects
@@ -279,7 +281,7 @@ class WeekdaySelectView(discord.ui.View):
             return
 
         view = FormatSelectView(
-            thread=self._thread,
+            msg_target=self._msg_target,
             state=self._state,
             test_date=self._test_date,
             subjects=self._subjects,
@@ -298,7 +300,7 @@ class FormatSelectView(discord.ui.View):
     def __init__(
         self,
         *,
-        thread: discord.Thread,
+        msg_target: discord.abc.Messageable,
         state: Any,
         test_date: date,
         subjects: str,
@@ -307,7 +309,7 @@ class FormatSelectView(discord.ui.View):
         calendar_dates: list[date],
     ) -> None:
         super().__init__(timeout=None)
-        self._thread = thread
+        self._msg_target = msg_target
         self._state = state
         self._test_date = test_date
         self._subjects = subjects
@@ -324,7 +326,7 @@ class FormatSelectView(discord.ui.View):
         await interaction.response.edit_message(view=self)
 
         day_count = len(self._calendar_dates)
-        await self._thread.send(
+        await self._msg_target.send(
             f"Gerando cronograma para {day_count} dia{'s' if day_count != 1 else ''} de estudo..."
         )
 
@@ -348,7 +350,7 @@ class FormatSelectView(discord.ui.View):
         )
 
         content = await _generate_cronograma_content(
-            self._thread,
+            self._msg_target,
             openai_client,
             openai_config,
             messages,
@@ -363,14 +365,14 @@ class FormatSelectView(discord.ui.View):
             title = f"Cronograma de Estudos — Prova: {test_date_formatted}"
             file_bytes, ext = generate_document(content, title, fmt)
         except RuntimeError as exc:
-            await self._thread.send(str(exc))
+            await self._msg_target.send(str(exc))
             return
 
         filename = (
             f"cronograma_{test_date_formatted.replace('/', '-').replace(' ', '_')}{ext}"
         )
         discord_file = discord.File(BytesIO(file_bytes), filename=filename)
-        await self._thread.send(file=discord_file)
+        await self._msg_target.send(file=discord_file)
 
 
 @final
@@ -457,39 +459,49 @@ def register_cronograma_command(
             return
 
         channel = interaction.channel
-        if channel is None or not isinstance(channel, discord.TextChannel):
+        is_dm = isinstance(channel, discord.DMChannel)
+        if channel is None or (
+            not isinstance(channel, discord.TextChannel) and not is_dm
+        ):
             await interaction.response.send_message(
-                "Erro: comando deve ser usado em um canal de texto.", ephemeral=True
+                "Erro: comando deve ser usado em um canal de texto ou DM.",
+                ephemeral=True,
             )
             return
 
-        await interaction.response.defer()
+        if is_dm:
+            await interaction.response.defer()
+            test_date_formatted = format_date_pt(parsed_date)
+            msg_target: discord.abc.Messageable = cast(discord.abc.Messageable, channel)
+        else:
+            assert isinstance(channel, discord.TextChannel)
+            await interaction.response.defer()
+            test_date_formatted = format_date_pt(parsed_date)
+            try:
+                thread = await channel.create_thread(
+                    name=f"Cronograma: {test_date_formatted}",
+                    type=discord.ChannelType.public_thread,
+                )
+            except discord.HTTPException as exc:
+                await interaction.followup.send(
+                    f"Erro ao criar thread: {exc}", ephemeral=True
+                )
+                return
 
-        test_date_formatted = format_date_pt(parsed_date)
-        try:
-            thread = await channel.create_thread(
-                name=f"Cronograma: {test_date_formatted}",
-                type=discord.ChannelType.public_thread,
+            await interaction.edit_original_response(
+                content=f"Cronograma criado: {thread.mention}"
             )
-        except discord.HTTPException as exc:
-            await interaction.followup.send(
-                f"Erro ao criar thread: {exc}", ephemeral=True
-            )
-            return
-
-        await interaction.edit_original_response(
-            content=f"Cronograma criado: {thread.mention}"
-        )
+            msg_target = thread
 
         view = WeekdaySelectView(
-            thread=thread,
+            msg_target=msg_target,
             state=state,
             test_date=parsed_date,
             subjects=subjects.strip(),
             hours_per_day=hours_per_day,
             instructions=instructions,
         )
-        await thread.send(
+        await msg_target.send(
             "Selecione os dias da semana em que você pode estudar:",
             view=view,
         )

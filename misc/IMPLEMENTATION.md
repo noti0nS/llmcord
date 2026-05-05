@@ -67,7 +67,7 @@ Keep the existing chat flow working while preparing the new experience.
 Add explicit task modes instead of relying on one prompt.
 
 **Modes**
-- `research`
+- `pesquisa`
 - `code`
 - `study_plan`
 - `abnt`
