@@ -7,9 +7,9 @@ from typing import Any, override
 import httpx
 
 try:
-    from duckduckgo_search import DDGS
+    import ddgs
 except ImportError as exc:  # pragma: no cover
-    raise RuntimeError("duckduckgo-search is required for /research") from exc
+    raise RuntimeError("ddgs is required for /research") from exc
 
 
 async def search_topics(
@@ -28,8 +28,8 @@ async def search_topics(
         try:
 
             def _search():
-                with DDGS() as ddgs:
-                    return list(ddgs.text(topic, max_results=max_results))
+                with ddgs.DDGS() as duck_search:
+                    return list(duck_search.text(topic, max_results=max_results))
 
             search_output = await asyncio.to_thread(_search)
             for result in search_output:
