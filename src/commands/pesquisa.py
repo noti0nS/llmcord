@@ -15,7 +15,7 @@ from ..helpers.content import get_completion_text
 from ..helpers.documents import generate_document
 from ..helpers.llm import get_provider_error_detail
 from ..helpers.search import fetch_page_content, search_topics
-from ..prompts.pesquisa import build_pesquisa_messages
+from ..prompts.pesquisa import build_pesquisa_messages, build_refinement_message
 
 WEB_SEARCH_TOOL: list[dict[str, Any]] = [
     {
@@ -68,6 +68,20 @@ FETCH_PAGE_TOOL: list[dict[str, Any]] = [
 ]
 
 ALL_PESQUISA_TOOLS = WEB_SEARCH_TOOL + FETCH_PAGE_TOOL
+
+CONTEXTO_CHOICES = [
+    discord.app_commands.Choice(name="🎓 Acadêmico / ABNT", value="academico"),
+    discord.app_commands.Choice(name="⚖️ NPJ / Peça Jurídica", value="npj"),
+    discord.app_commands.Choice(name="💻 Programação / Neuro", value="programacao"),
+]
+
+EXTENSAO_CHOICES = [
+    discord.app_commands.Choice(name="Direto ao Ponto (~1 pág. / 500w)", value="curto"),
+    discord.app_commands.Choice(name="Padrão (~3 págs. / 1.500w)", value="padrao"),
+    discord.app_commands.Choice(
+        name="Dossiê Completo (5+ págs. / 2.500+w)", value="completo"
+    ),
+]
 
 FORMATO_CHOICES = [
     discord.app_commands.Choice(name="DOCX (Microsoft Word)", value="docx"),
@@ -173,28 +187,53 @@ def register_pesquisa_command(
 ) -> None:
     @discord_bot.tree.command(
         name="pesquisa",
-        description="Gere um documento acadêmico ABNT a partir de uma descrição de pesquisa",
+        description="Gere um documento acadêmico ou jurídico a partir de um tema",
     )
     @discord.app_commands.describe(
-        topic="Descreva sua pesquisa em texto livre: tema, tipo de documento, tópicos, etc.",
+        tema="Tema da pesquisa em texto livre (ex: competência FGTS falecimento)",
+        contexto="Tipo de documento e persona",
+        extensao="Nível de detalhe do documento",
+        paginas="Número alvo de páginas (1–50). Sobrepõe a extensão se conflitar.",
+        modo_pensamento="Ativa modelo de raciocínio (teses minoritárias, debates profundos)",
+        instrucoes_extras="Instruções fragmentárias adicionais (ex: 3 peças: inicial, contestação, reconvenção)",
         format="Formato do arquivo de saída",
     )
     @discord.app_commands.choices(
+        contexto=CONTEXTO_CHOICES,
+        extensao=EXTENSAO_CHOICES,
         format=FORMATO_CHOICES,
     )
     async def pesquisa_command(  # pyright: ignore[reportUnusedFunction]
         interaction: discord.Interaction,
-        topic: str,
+        tema: str,
+        contexto: str = "academico",
+        extensao: str = "padrao",
+        paginas: int = 3,
+        modo_pensamento: bool = False,
+        instrucoes_extras: str | None = None,
         format: discord.app_commands.Choice[str] | None = None,
     ) -> None:
         state.config = await asyncio.to_thread(get_config)
 
         formato_valor = format.value if format else "docx"
 
-        if not topic.strip():
+        if not tema.strip():
             await interaction.response.send_message(
-                "Descreva sua pesquisa. Exemplo: "
-                + "`Preciso de uma monografia sobre alvará judicial no TJSP, aprofundada para professor.`",
+                "Descreva sua pesquisa. Exemplo: " + "`competência FGTS falecimento`",
+                ephemeral=True,
+            )
+            return
+
+        if paginas < 1:
+            await interaction.response.send_message(
+                "O número de páginas deve ser no mínimo 1.",
+                ephemeral=True,
+            )
+            return
+
+        if paginas > 50:
+            await interaction.response.send_message(
+                "O número de páginas não pode exceder 50.",
                 ephemeral=True,
             )
             return
@@ -205,26 +244,115 @@ def register_pesquisa_command(
         )
 
         logging.info(
-            "Pesquisa started (user ID: %s, topic_len: %s, formato: %s)",
+            "Pesquisa started (user ID: %s, tema: %r, contexto: %s, extensao: %s, "
+            "paginas: %s, modo_pensamento: %s, formato: %s)",
             interaction.user.id,
-            len(topic),
+            tema[:80],
+            contexto,
+            extensao,
+            paginas,
+            modo_pensamento,
             formato_valor,
         )
 
-        messages: list[dict[str, Any]] = build_pesquisa_messages(topic)
+        messages: list[dict[str, Any]] = build_pesquisa_messages(
+            tema=tema,
+            contexto=contexto,
+            extensao=extensao,
+            paginas=paginas,
+            modo_pensamento=modo_pensamento,
+            instrucoes_extras=instrucoes_extras,
+        )
 
         research_config = state.config.get("research", {})
         max_iterations = research_config.get("max_tool_iterations", 15)
         search_results_count = research_config.get("search_results_per_topic", 8)
         max_pages = research_config.get("max_page_fetches", 5)
+        refinement_enabled = research_config.get("refinement_enabled", True)
 
-        openai_client, openai_config = get_openai_config(state.config, state.curr_model)
+        curr_model = state.curr_model
+        if modo_pensamento:
+            thinking_model = research_config.get("thinking_model")
+            if thinking_model:
+                curr_model = thinking_model
+            else:
+                logging.warning(
+                    "modo_pensamento=True but no research.thinking_model configured, "
+                    "falling back to %s (user ID: %s)",
+                    curr_model,
+                    interaction.user.id,
+                )
+
+        openai_client, openai_config = get_openai_config(state.config, curr_model)
+
+        reasoning_effort = "high" if modo_pensamento else None
 
         raw_output = ""
         request_started_at = datetime.now().timestamp()
         pages_fetched = 0
 
         try:
+            # Phase 1: Refinement (self-Q&A) — optional pre-generation step
+            if refinement_enabled:
+                saved_len = len(messages)
+                messages.append({"role": "user", "content": build_refinement_message()})
+                logging.info(
+                    "Pesquisa refinement started (user ID: %s, model: %s)",
+                    interaction.user.id,
+                    openai_config["model"],
+                )
+                try:
+                    refinement_task = asyncio.create_task(
+                        openai_client.chat.completions.create(
+                            **build_openai_chat_completion_kwargs(
+                                openai_config,
+                                messages,
+                                stream=False,
+                                tool_choice="none",
+                                reasoning_effort=reasoning_effort,
+                            )
+                        )
+                    )
+                    refinement_completion = await await_task_with_heartbeats(
+                        refinement_task,
+                        (
+                            "Pesquisa refinement still running "
+                            f"(user ID: {interaction.user.id}, "
+                            f"model: {openai_config['model']})"
+                        ),
+                    )
+                    refinement_text = get_completion_text(refinement_completion)
+                    if refinement_text.strip():
+                        messages.append(
+                            {"role": "assistant", "content": refinement_text}
+                        )
+                        logging.info(
+                            "Pesquisa refinement completed (user ID: %s, length: %s)",
+                            interaction.user.id,
+                            len(refinement_text),
+                        )
+                    else:
+                        logging.warning(
+                            "Pesquisa refinement returned empty output (user ID: %s)",
+                            interaction.user.id,
+                        )
+                        del messages[saved_len:]
+                except APIError as exc:
+                    logging.warning(
+                        "Pesquisa refinement API error (user ID: %s): %s",
+                        interaction.user.id,
+                        get_provider_error_detail(exc),
+                    )
+                    del messages[saved_len:]
+                except Exception:
+                    logging.warning(
+                        "Pesquisa refinement failed (user ID: %s)",
+                        interaction.user.id,
+                        exc_info=True,
+                    )
+                    del messages[saved_len:]
+
+            # Phase 2: Research & generation (tool-calling loop)
             for iteration in range(max_iterations):
                 logging.info(
                     "Pesquisa LLM iteration %s/%s (user ID: %s, model: %s)",
@@ -241,6 +369,7 @@ def register_pesquisa_command(
                             messages,
                             stream=False,
                             tools=ALL_PESQUISA_TOOLS,
+                            reasoning_effort=reasoning_effort,
                         )
                     )
                 )
@@ -429,6 +558,7 @@ def register_pesquisa_command(
                             messages,
                             stream=False,
                             tool_choice="none",
+                            reasoning_effort=reasoning_effort,
                         )
                     )
                 )
@@ -472,8 +602,8 @@ def register_pesquisa_command(
 
         # Generate document file
         try:
-            file_bytes, _ = generate_document(raw_output, topic, formato_valor)
-            filename = build_pesquisa_filename(topic, formato_valor)
+            file_bytes, _ = generate_document(raw_output, tema, formato_valor)
+            filename = build_pesquisa_filename(tema, formato_valor)
         except Exception:
             logging.exception("Error while generating document file")
             await interaction.followup.send(

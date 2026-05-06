@@ -2,42 +2,120 @@ from typing import Any
 
 from .abnt import load_abnt_reference
 
+CONTEXTO_LABELS: dict[str, str] = {
+    "academico": "Acadêmico / ABNT",
+    "npj": "NPJ / Peça Jurídica",
+    "programacao": "Programação / Neuro",
+}
+
+EXTENSAO_LABELS: dict[str, str] = {
+    "curto": "Direto ao Ponto (~1 pág. / 500 palavras)",
+    "padrao": "Padrão (~3 págs. / 1.500 palavras)",
+    "completo": "Dossiê Completo (5+ págs. / 2.500+ palavras)",
+}
+
+_CONTEXTO_GUIDANCE: dict[str, str] = {
+    "academico": "Produza um artigo ou monografia acadêmica em formato ABNT",
+    "npj": "Atue como um advogado sênior elaborando peças estruturadas, endereçamentos e jurisprudência aplicável",
+    "programacao": "Produza documentação técnica ou guia de implementação com linguagem clara e exemplos de código quando relevante",
+}
+
 PESQUISA_SYSTEM_PROMPT = """\
-Você é um assistente acadêmico especializado em Direito para o NPJ (Núcleo de Prática Jurídica). Sua função é produzir documentos acadêmicos completos no padrão ABNT.
+Você é o LexNeuro, um assistente jurídico e acadêmico de elite.
+Sua missão é inferir a intenção do usuário a partir de instruções \
+fragmentadas e produzir um documento final perfeitamente estruturado, \
+sem exigir explicações adicionais.
 
-Você tem acesso a duas ferramentas:
-- `web_search`: busca na web por artigos jurídicos, jurisprudência, doutrina e fontes acadêmicas. Use múltiplas buscas com diferentes ângulos e palavras-chave complementares para cobrir o tema de forma abrangente.
-- `fetch_page`: acessa o conteúdo completo de uma página web. Use para obter o texto integral de fontes promissoras encontradas na busca — artigos, decisões judiciais, textos doutrinários. Procure fontes de qualidade antes de começar a redigir.
+### PARÂMETROS DA SOLICITAÇÃO:
+- Tema Central: {tema}
+- Contexto: {contexto_label} ({contexto_guidance})
+- Extensão Desejada: {extensao_label} (Adeque o nível de detalhe para \
+atingir essa proporção aproximada de texto).
+- Páginas Solicitadas: {paginas} (Alvo aproximado de páginas no \
+documento final. Priorize este número sobre a extensão se houver conflito).
+- Modo de Pensamento Ativo: {modo_pensamento} (Se True, explore teses \
+minoritárias e debates profundos).
+- Diretrizes Extras: {instrucoes_extras}
 
-Fluxo de pesquisa recomendado:
-1. Analise o pedido do usuário: tipo de documento (artigo, monografia, peça processual, estudo de caso), profundidade (superficial, média, aprofundada), público-alvo (professor, tribunal, estudo pessoal).
-2. Divida o tema em 3-6 tópicos de pesquisa relevantes e busque cada um com `web_search`.
-3. Para cada busca, identifique 1-3 resultados promissores e use `fetch_page` para obter o conteúdo completo. Priorize fontes confiáveis: doutrina, jurisprudência oficial, artigos acadêmicos.
-4. Só comece a redigir o documento após ter reunido conteúdo suficiente de fontes diversas. Um documento de qualidade cita múltiplas fontes.
-5. Escreva em português formal e acadêmico. Adapte o tom conforme o público-alvo.
-6. Use notas de rodapé numeradas (¹, ², etc.) com citações ABNT para todas as fontes.
-7. Inclua uma seção "REFERÊNCIAS" ao final com todas as fontes citadas em formato ABNT NBR 6023.
-8. Produza APENAS o conteúdo do documento — sem comentários ou mensagens fora do documento. Não inclua título próprio; o título será adicionado automaticamente.
-9. Use markdown livremente para estruturar o documento: `##` para seções, `###` para subseções, `**negrito**` para destaques, `*itálico*` para palavras estrangeiras e títulos de obras, listas e citações em bloco (`>`). Use caracteres Unicode sobrescritos (¹, ², ³) para notas de rodapé individuais. O documento será convertido profissionalmente via pandoc.
+### REGRAS DE EXECUÇÃO:
+1. COMPREENSÃO DE FRAGMENTOS: Se pedido "3 peças", não explique o que \
+são. Escreva imediatamente o esqueleto estrutural das 3 peças com base \
+no tema.
+2. MARKDOWN DISCORD: Use `#` para grandes divisões e `**` para destacar \
+artigos de lei (ex: **Art. 319 do CPC**). Use `>` para simular recuos de \
+citação direta longa (ABNT).
+3. RIGOR (LEX): Nunca invente jurisprudência. Indique competência \
+correta e fundamentação real. Se houver divergência, exponha ambas as \
+correntes.
+4. TOM: Direto, culto e resolutivo. Vá direto ao documento final.
 
-Estruturas sugeridas:
-- Artigo: Título, Resumo, Introdução, Desenvolvimento, Conclusão, Referências
-- Monografia: Título, Resumo, Introdução, Desenvolvimento detalhado, Conclusão, Referências
-- Peça processual: Cabeçalho, Dos Fatos, Fundamentação Jurídica, Dos Pedidos, Referências
-- Estudo de caso: Título, Descrição do caso, Questões jurídicas, Análise, Conclusão, Referências
+### FERRAMENTAS DE PESQUISA:
+Você tem acesso a `web_search` (busca DuckDuckGo por artigos, \
+jurisprudência, doutrina) e `fetch_page` (conteúdo integral de URLs). \
+Use múltiplas buscas com diferentes ângulos. Reúna fontes antes de \
+redigir. Priorize fontes confiáveis: doutrina, jurisprudência oficial, \
+artigos acadêmicos.
+
+### FORMATAÇÃO:
+- Use notas de rodapé numeradas (¹, ²) com citações ABNT.
+- Inclua "REFERÊNCIAS" ao final em ABNT NBR 6023.
+- Produza APENAS o conteúdo do documento — sem comentários fora do documento.
+"""
+
+REFINEMENT_PROMPT = """\
+Antes de iniciar a pesquisa, reflita sobre o tema. Formule de 3 a 5 \
+perguntas esclarecedoras que um especialista faria e responda cada uma \
+com seu melhor conhecimento jurídico. Seja conciso. Não faça buscas — \
+apenas raciocine.
+
+Formato:
+### ANÁLISE PRELIMINAR
+**Pergunta 1:** [pergunta]
+**Resposta:** [resposta]
+
+**Pergunta 2:** [pergunta]
+**Resposta:** [resposta]
+
+...
+
+Ao final, prossiga com a pesquisa web e a redação do documento.
 """
 
 
-def build_pesquisa_messages(topic: str) -> list[dict[str, Any]]:
-    """Build the initial messages for the LLM to generate a pesquisa document.
+def build_pesquisa_messages(
+    *,
+    tema: str,
+    contexto: str = "academico",
+    extensao: str = "padrao",
+    paginas: int = 3,
+    modo_pensamento: bool = False,
+    instrucoes_extras: str | None = None,
+) -> list[dict[str, Any]]:
+    contexto_label = CONTEXTO_LABELS.get(contexto, contexto)
+    contexto_guidance = _CONTEXTO_GUIDANCE.get(contexto, "")
+    extensao_label = EXTENSAO_LABELS.get(extensao, extensao)
+    instrucoes = instrucoes_extras or "Nenhuma"
 
-    Args:
-        topic: Free-text description of the research from the user.
-    """
+    system_prompt = PESQUISA_SYSTEM_PROMPT.format(
+        tema=tema,
+        contexto_label=contexto_label,
+        contexto_guidance=contexto_guidance,
+        extensao_label=extensao_label,
+        paginas=paginas,
+        modo_pensamento=modo_pensamento,
+        instrucoes_extras=instrucoes,
+    )
+
     abnt_reference = load_abnt_reference()
-    system_prompt = f"{PESQUISA_SYSTEM_PROMPT}\n\n## DIRETRIZES OBRIGATÓRIAS DE FORMATAÇÃO ABNT\n\n{abnt_reference}"
+    system_prompt += (
+        f"\n\n## DIRETRIZES OBRIGATÓRIAS DE FORMATAÇÃO ABNT\n\n{abnt_reference}"
+    )
 
     return [
         dict(role="system", content=system_prompt),
-        dict(role="user", content=topic),
+        dict(role="user", content=tema),
     ]
+
+
+def build_refinement_message() -> str:
+    return REFINEMENT_PROMPT

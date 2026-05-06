@@ -11,19 +11,6 @@ max_messages: 25
 use_plain_responses: false
 allow_dms: true
 
-abnt:
-  max_document_chars: 100000
-
-cronograma:
-  days_before_test: 3
-  default_hours_per_day: 4
-
-status:
-  enabled: true
-  model: openai/gpt-4o-mini
-  interval_hours: 24
-  max_history: 100
-
 permissions:
   users:
     admin_ids: []
@@ -91,6 +78,26 @@ models:
   openrouter/x-ai/grok-4-fast:online:
 
   ollama/llama4:
+
+abnt:
+  max_document_chars: 100000
+
+cronograma:
+  days_before_test: 3
+  default_hours_per_day: 4
+
+research:
+  max_tool_iterations: 15
+  search_results_per_topic: 8
+  max_page_fetches: 5
+  thinking_model: deepseek/deepseek-r1
+  refinement_enabled: true
+
+status:
+  enabled: true
+  model: openai/gpt-4o-mini
+  interval_hours: 24
+  max_history: 100
 
 system_prompt: |
   You are a snarky Discord chatbot. Be informative but harsh.

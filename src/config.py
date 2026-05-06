@@ -98,8 +98,10 @@ def build_openai_chat_completion_kwargs(
     max_tokens: int | None = None,
     tools: list[dict[str, Any]] | None = None,
     tool_choice: str | dict[str, Any] | None = None,
+    reasoning_effort: str | None = None,
 ) -> dict[str, Any]:
-    if _needs_deepseek_reasoning(openai_config):
+    needs_deepseek_reasoning = _needs_deepseek_reasoning(openai_config)
+    if needs_deepseek_reasoning:
         for msg in messages:
             if msg.get("role") == "assistant" and "reasoning_content" not in msg:
                 msg["reasoning_content"] = ""
@@ -122,5 +124,11 @@ def build_openai_chat_completion_kwargs(
         kwargs["tools"] = tools
     if tool_choice is not None:
         kwargs["tool_choice"] = tool_choice
+    if reasoning_effort is not None:
+        kwargs["reasoning_effort"] = reasoning_effort
+        if needs_deepseek_reasoning:
+            merged_extra = dict(openai_config.get("extra_body") or {})
+            merged_extra["thinking"] = {"type": "enabled"}
+            kwargs["extra_body"] = merged_extra
 
     return kwargs
